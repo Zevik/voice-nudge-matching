@@ -9,6 +9,33 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      matches: {
+        Row: {
+          created_at: string | null
+          id: string
+          matched_user_id: string
+          status: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          matched_user_id: string
+          status: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          matched_user_id?: string
+          status?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           age: number | null
@@ -48,6 +75,36 @@ export type Database = {
           premium?: boolean | null
           profile_picture?: string | null
           relationship_goal?: string | null
+        }
+        Relationships: []
+      }
+      reports: {
+        Row: {
+          call_id: string | null
+          created_at: string | null
+          id: string
+          reason: string
+          reported_user_id: string
+          reporter_id: string
+          status: string
+        }
+        Insert: {
+          call_id?: string | null
+          created_at?: string | null
+          id?: string
+          reason: string
+          reported_user_id: string
+          reporter_id: string
+          status: string
+        }
+        Update: {
+          call_id?: string | null
+          created_at?: string | null
+          id?: string
+          reason?: string
+          reported_user_id?: string
+          reporter_id?: string
+          status?: string
         }
         Relationships: []
       }

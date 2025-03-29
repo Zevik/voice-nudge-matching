@@ -1,10 +1,9 @@
-
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useApp } from '@/context/AppContext';
 import { Mic, Video, Search, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { User } from '@/types';
+import { User, DbMatch } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 
 const MatchFinder: React.FC = () => {

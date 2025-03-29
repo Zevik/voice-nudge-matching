@@ -48,3 +48,23 @@ export interface AppState {
   callTimeRemaining: number;
   callStage: 'none' | 'preparing' | 'voice' | 'video' | 'decision';
 }
+
+// Database schema types that match Supabase structure
+export interface DbMatch {
+  id: string;
+  user_id: string;
+  matched_user_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbReport {
+  id: string;
+  reporter_id: string;
+  reported_user_id: string;
+  call_id: string | null;
+  reason: string;
+  status: string;
+  created_at: string;
+}

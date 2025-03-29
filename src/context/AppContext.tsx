@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, AppState, Match, Call, Report } from '@/types';
+import { User, AppState, Match, Call, Report, DbMatch, DbReport } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from "@/hooks/use-toast";
 import webRTCService from '@/services/WebRTCService';
@@ -64,13 +64,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         // Handle new match
         if (payload.eventType === 'INSERT') {
-          const matchData = payload.new;
+          const matchData = payload.new as DbMatch;
           
           const newMatch: Match = {
             id: matchData.id,
             userId: matchData.user_id,
             matchedUserId: matchData.matched_user_id,
-            status: matchData.status,
+            status: matchData.status as 'pending' | 'accepted' | 'rejected' | 'completed',
             createdAt: new Date(matchData.created_at),
           };
           
@@ -88,14 +88,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         // Handle match updates
         if (payload.eventType === 'UPDATE') {
-          const matchData = payload.new;
+          const matchData = payload.new as DbMatch;
           
           if (state.currentMatch && state.currentMatch.id === matchData.id) {
             setState(prev => ({
               ...prev,
               currentMatch: {
                 ...prev.currentMatch!,
-                status: matchData.status
+                status: matchData.status as 'pending' | 'accepted' | 'rejected' | 'completed'
               } as Match
             }));
             
@@ -139,13 +139,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         // Handle new incoming match
         if (payload.eventType === 'INSERT') {
-          const matchData = payload.new;
+          const matchData = payload.new as DbMatch;
           
           const newMatch: Match = {
             id: matchData.id,
             userId: matchData.user_id,
             matchedUserId: matchData.matched_user_id,
-            status: matchData.status,
+            status: matchData.status as 'pending' | 'accepted' | 'rejected' | 'completed',
             createdAt: new Date(matchData.created_at),
           };
           
