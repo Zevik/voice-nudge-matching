@@ -6,43 +6,116 @@ import { Label } from '@/components/ui/label';
 import { useApp } from '@/context/AppContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Heart } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from "@/components/ui/use-toast";
 
 const AuthForm: React.FC = () => {
-  const { login } = useApp();
+  const { setAuthUser } = useApp();
+  const { toast } = useToast();
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
   const [gender, setGender] = useState<'male' | 'female' | 'other'>('other');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, we would make an API call to authenticate
-    login({
-      id: "1",
-      name: name || "Guest User",
-      age: parseInt(age) || 28,
-      gender,
-      preferredGender: 'all',
-      location: "Tel Aviv",
-      relationshipGoal: 'casual',
-      premium: false,
-    });
+    setLoading(true);
+    
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.user) {
+        // Fetch user profile from profiles table
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profileError) {
+          console.error('Error fetching profile:', profileError);
+        }
+
+        // Set the user in the application context
+        setAuthUser(data.user, data.session, profileData);
+        
+        toast({
+          title: "התחברת בהצלחה",
+          description: "ברוך הבא לVoiceMatch!",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "התחברות נכשלה",
+        description: error.message || "אירעה שגיאה בהתחברות, נסה שנית",
+        variant: "destructive",
+      });
+      console.error('Login error:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, we would make an API call to register
-    login({
-      id: "1",
-      name,
-      age: parseInt(age),
-      gender,
-      preferredGender: 'all',
-      location: "Tel Aviv",
-      relationshipGoal: 'casual',
-      premium: false,
-    });
+    setLoading(true);
+
+    if (!name || !age || !email || !password) {
+      toast({
+        title: "שדות חסרים",
+        description: "אנא מלא את כל השדות הנדרשים",
+        variant: "destructive",
+      });
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Sign up with Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name: name,
+            age: parseInt(age),
+            gender: gender,
+          },
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.user) {
+        // Set the user in the application context
+        setAuthUser(data.user, data.session);
+        
+        toast({
+          title: "נרשמת בהצלחה",
+          description: "ברוך הבא לVoiceMatch!",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "הרשמה נכשלה",
+        description: error.message || "אירעה שגיאה בהרשמה, נסה שנית",
+        variant: "destructive",
+      });
+      console.error('Registration error:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -52,39 +125,43 @@ const AuthForm: React.FC = () => {
           <Heart className="text-white" size={32} />
         </div>
         <h1 className="text-3xl font-bold dating-gradient-text">VoiceMatch</h1>
-        <p className="text-gray-600 mt-2">Connect through conversations</p>
+        <p className="text-gray-600 mt-2">התחבר דרך שיחות</p>
       </div>
 
       <Tabs defaultValue="login">
         <TabsList className="grid grid-cols-2 mb-6">
-          <TabsTrigger value="login">Login</TabsTrigger>
-          <TabsTrigger value="register">Register</TabsTrigger>
+          <TabsTrigger value="login">התחברות</TabsTrigger>
+          <TabsTrigger value="register">הרשמה</TabsTrigger>
         </TabsList>
 
         <TabsContent value="login">
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">אימייל</Label>
               <Input
                 id="email"
                 type="email"
                 placeholder="your@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                required
+                dir="ltr"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">סיסמה</Label>
               <Input
                 id="password"
                 type="password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                required
+                dir="ltr"
               />
             </div>
-            <Button type="submit" className="w-full dating-button">
-              Login
+            <Button type="submit" className="w-full dating-button" disabled={loading}>
+              {loading ? 'מתחבר...' : 'התחבר'}
             </Button>
           </form>
         </TabsContent>
@@ -92,30 +169,30 @@ const AuthForm: React.FC = () => {
         <TabsContent value="register">
           <form onSubmit={handleRegister} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="register-name">Name</Label>
+              <Label htmlFor="register-name">שם</Label>
               <Input
                 id="register-name"
-                placeholder="Your name"
+                placeholder="השם שלך"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="register-age">Age</Label>
+              <Label htmlFor="register-age">גיל</Label>
               <Input
                 id="register-age"
                 type="number"
                 min="18"
                 max="120"
-                placeholder="Your age"
+                placeholder="הגיל שלך"
                 value={age}
                 onChange={(e) => setAge(e.target.value)}
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="register-gender">Gender</Label>
+              <Label htmlFor="register-gender">מגדר</Label>
               <select
                 id="register-gender"
                 className="w-full rounded-md border border-input bg-background px-3 py-2"
@@ -123,13 +200,13 @@ const AuthForm: React.FC = () => {
                 onChange={(e) => setGender(e.target.value as 'male' | 'female' | 'other')}
                 required
               >
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
+                <option value="male">גבר</option>
+                <option value="female">אישה</option>
+                <option value="other">אחר</option>
               </select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="register-email">Email</Label>
+              <Label htmlFor="register-email">אימייל</Label>
               <Input
                 id="register-email"
                 type="email"
@@ -137,10 +214,11 @@ const AuthForm: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                dir="ltr"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="register-password">Password</Label>
+              <Label htmlFor="register-password">סיסמה</Label>
               <Input
                 id="register-password"
                 type="password"
@@ -148,10 +226,11 @@ const AuthForm: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                dir="ltr"
               />
             </div>
-            <Button type="submit" className="w-full dating-button">
-              Register
+            <Button type="submit" className="w-full dating-button" disabled={loading}>
+              {loading ? 'נרשם...' : 'הרשם'}
             </Button>
           </form>
         </TabsContent>

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import Header from '@/components/Header';
 import AuthForm from '@/components/AuthForm';
@@ -7,6 +7,7 @@ import MatchFinder from '@/components/MatchFinder';
 import CallInterface from '@/components/CallInterface';
 import ProfileSection from '@/components/ProfileSection';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { supabase } from '@/integrations/supabase/client';
 
 const Index = () => {
   const { state } = useApp();
@@ -38,8 +39,8 @@ const Index = () => {
       
       <Tabs defaultValue="match" className="w-full">
         <TabsList className="grid grid-cols-2 mb-6">
-          <TabsTrigger value="match">Match</TabsTrigger>
-          <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="match">התאמה</TabsTrigger>
+          <TabsTrigger value="profile">פרופיל</TabsTrigger>
         </TabsList>
         
         <TabsContent value="match">

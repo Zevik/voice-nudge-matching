@@ -1,20 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AppState, User, Match, Call } from '@/types';
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from '@/integrations/supabase/client';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 
-// Default user for testing
-const defaultUser: User = {
-  id: "1",
-  name: "Guest User",
-  age: 28,
-  gender: "other",
-  preferredGender: "all",
-  location: "Tel Aviv",
-  relationshipGoal: "casual",
-  premium: false,
-  profilePicture: "/placeholder.svg"
-};
-
+// Default state
 const initialState: AppState = {
   currentUser: undefined,
   currentMatch: undefined,
@@ -26,6 +16,7 @@ const initialState: AppState = {
 
 interface AppContextType {
   state: AppState;
+  setAuthUser: (supabaseUser: SupabaseUser, session: Session | null, profile?: any) => void;
   login: (user: User) => void;
   logout: () => void;
   startSearchingMatch: () => void;
@@ -44,17 +35,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [state, setState] = useState<AppState>(initialState);
   const { toast } = useToast();
 
-  // For demo purposes, auto-login the user
+  // Check for existing session on load
   useEffect(() => {
-    // In a real app, we would check local storage or cookies for a stored session
-    // For now, we'll just auto-login with the default user after a short delay
-    const timer = setTimeout(() => {
-      if (!state.currentUser) {
-        setState(prev => ({ ...prev, currentUser: defaultUser }));
+    const fetchSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        setAuthUser(session.user, session, profileData);
       }
-    }, 1000);
+    };
 
-    return () => clearTimeout(timer);
+    fetchSession();
+
+    // Set up auth state change listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_OUT') {
+          setState(initialState);
+        } else if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+          // Fetch the user profile when auth state changes to signed in
+          setTimeout(async () => {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+            
+            setAuthUser(session.user, session, profileData);
+          }, 0);
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Timer for calls
@@ -117,27 +138,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [state.isSearchingMatch, state.currentMatch, state.currentUser?.id, toast]);
 
+  const setAuthUser = (supabaseUser: SupabaseUser, session: Session | null, profile?: any) => {
+    const userProfile: User = {
+      id: supabaseUser.id,
+      name: profile?.name || supabaseUser.user_metadata?.name || "משתמש חדש",
+      age: profile?.age || supabaseUser.user_metadata?.age || 25,
+      gender: profile?.gender || supabaseUser.user_metadata?.gender || 'other',
+      preferredGender: profile?.preferred_gender || 'all',
+      location: profile?.location || "ישראל",
+      relationshipGoal: profile?.relationship_goal || 'casual',
+      premium: profile?.premium || false,
+      profilePicture: profile?.profile_picture || "/placeholder.svg",
+      bio: profile?.bio,
+    };
+
+    setState(prev => ({ ...prev, currentUser: userProfile }));
+  };
+
   const login = (user: User) => {
     setState(prev => ({ ...prev, currentUser: user }));
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setState(initialState);
+    toast({
+      title: "התנתקת בהצלחה",
+      description: "להתראות!",
+    });
   };
 
   const startSearchingMatch = () => {
     setState(prev => ({ ...prev, isSearchingMatch: true }));
     toast({
-      title: "Searching for matches...",
-      description: "We'll notify you when we find someone available.",
+      title: "מחפש התאמות...",
+      description: "נודיע לך כשנמצא מישהו זמין.",
     });
   };
 
   const stopSearchingMatch = () => {
     setState(prev => ({ ...prev, isSearchingMatch: false }));
     toast({
-      title: "Search stopped",
-      description: "You've stopped looking for matches.",
+      title: "החיפוש הופסק",
+      description: "הפסקת לחפש התאמות.",
     });
   };
 
@@ -160,8 +203,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentMatch: undefined,
       }));
       toast({
-        title: "Match declined",
-        description: "You've declined this match. Looking for a new one...",
+        title: "התאמה נדחתה",
+        description: "דחית את ההתאמה הזו. מחפש חדשה...",
       });
       // Auto-start searching for a new match
       startSearchingMatch();
@@ -188,8 +231,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Show a quick preparation screen before starting the call
     setTimeout(() => {
       toast({
-        title: `${type.charAt(0).toUpperCase() + type.slice(1)} call started`,
-        description: `You have ${Math.floor(duration / 60)} minutes to chat.`,
+        title: `${type === 'voice' ? 'שיחה קולית' : 'שיחת וידאו'} התחילה`,
+        description: `יש לך ${Math.floor(duration / 60)} דקות לשוחח.`,
       });
     }, 2000);
   };
@@ -203,8 +246,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
     
     toast({
-      title: "Call ended",
-      description: "The call has ended.",
+      title: "השיחה הסתיימה",
+      description: "השיחה הסתיימה.",
     });
   };
 
@@ -214,14 +257,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // If we were in a voice call, offer a video call next
         startCall(state.currentMatch?.id || "", 'video', 5 * 60); // 5 minutes for video call
         toast({
-          title: "Great!",
-          description: "Moving to video call now.",
+          title: "מעולה!",
+          description: "עוברים לשיחת וידאו.",
         });
       } else {
         // Otherwise, just end the current session with a positive outcome
         toast({
-          title: "Match successful!",
-          description: "You both want to continue! In a real app, you would exchange contact info now.",
+          title: "התאמה מוצלחת!",
+          description: "שניכם רוצים להמשיך! באפליקציה אמיתית, הייתם מחליפים פרטי קשר כעת.",
         });
         setState(prev => ({
           ...prev,
@@ -233,8 +276,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       // End the match
       toast({
-        title: "Match ended",
-        description: "You've decided to end this match.",
+        title: "התאמה הסתיימה",
+        description: "החלטת לסיים את ההתאמה הזו.",
       });
       setState(prev => ({
         ...prev,
@@ -250,8 +293,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const reportUser = (reportedUserId: string, reason: string) => {
     toast({
-      title: "User reported",
-      description: "Thank you for your report. We'll review it and take action.",
+      title: "דיווח על משתמש",
+      description: "תודה על הדיווח. נבדוק את זה ונפעל בהתאם.",
       variant: "destructive",
     });
     
@@ -267,6 +310,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const contextValue: AppContextType = {
     state,
+    setAuthUser,
     login,
     logout,
     startSearchingMatch,
