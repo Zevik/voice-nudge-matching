@@ -12,8 +12,74 @@ const MatchFinder: React.FC = () => {
   const { currentUser, isSearchingMatch, currentMatch } = state;
   const { toast } = useToast();
   const [activeUsers, setActiveUsers] = useState<User[]>([]);
+  const [presenceChannel, setPresenceChannel] = useState<any>(null);
 
-  // Function to fetch active users
+  // Function to set up real-time presence
+  const setupPresence = () => {
+    // Create a unique channel for active users
+    const channel = supabase.channel('active_users');
+
+    // Set up presence tracking
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        // Get the current state of all users
+        const state = channel.presenceState();
+        
+        // Convert presence state to array of users
+        const users: User[] = [];
+        Object.keys(state).forEach(key => {
+          // Each key can have multiple presences (e.g., from different tabs)
+          state[key].forEach((presence: any) => {
+            if (presence.user && presence.user.id !== currentUser?.id) {
+              users.push(presence.user);
+            }
+          });
+        });
+        
+        setActiveUsers(users);
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        console.log('User joined:', key, newPresences);
+        // A new user has joined, update the active users list
+        // Note: We rely on the 'sync' event to update the state
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        console.log('User left:', key, leftPresences);
+        // A user has left, update the active users list
+        // Note: We rely on the 'sync' event to update the state
+      })
+      .subscribe(async (status) => {
+        if (status !== 'SUBSCRIBED' || !currentUser) return;
+        
+        // Start tracking this user's presence
+        await channel.track({
+          user: currentUser,
+          online_at: new Date().toISOString(),
+          searching: true
+        });
+        
+        setPresenceChannel(channel);
+      });
+      
+    return channel;
+  };
+
+  // Set up or clean up presence tracking when searching status changes
+  useEffect(() => {
+    let channel: any = null;
+    
+    if (isSearchingMatch && currentUser) {
+      channel = setupPresence();
+    }
+    
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [isSearchingMatch, currentUser?.id]);
+
+  // Function to fetch active users (fallback for when realtime is not available)
   const fetchActiveUsers = async () => {
     try {
       // In a real app, we would query for users who are currently "searching"
@@ -53,32 +119,19 @@ const MatchFinder: React.FC = () => {
 
   // Fetch active users when component mounts or when searching status changes
   useEffect(() => {
-    if (isSearchingMatch) {
+    if (isSearchingMatch && activeUsers.length === 0) {
       fetchActiveUsers();
     }
   }, [isSearchingMatch, currentUser?.id]);
 
-  // Set up realtime subscription for active users
+  // Stop tracking presence when component unmounts or user stops searching
   useEffect(() => {
-    const channel = supabase
-      .channel('public:profiles')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'profiles'
-      }, payload => {
-        console.log('Profile change received:', payload);
-        // Refresh user list when profiles change
-        if (isSearchingMatch) {
-          fetchActiveUsers();
-        }
-      })
-      .subscribe();
-
     return () => {
-      supabase.removeChannel(channel);
+      if (presenceChannel) {
+        supabase.removeChannel(presenceChannel);
+      }
     };
-  }, [isSearchingMatch]);
+  }, []);
 
   return (
     <div className="dating-card flex flex-col items-center gap-6 max-w-md w-full mx-auto">
@@ -130,9 +183,9 @@ const MatchFinder: React.FC = () => {
                   <Button 
                     className="dating-button-sm"
                     onClick={() => {
-                      // Create a mock match with this user
+                      // Create a match with this user
                       const mockMatch = {
-                        id: Math.random().toString(36).substring(7),
+                        id: `${currentUser?.id}-${user.id}-${Date.now()}`,
                         userId: currentUser?.id || "",
                         matchedUserId: user.id,
                         status: 'pending' as const,

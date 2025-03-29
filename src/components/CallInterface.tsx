@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { useApp } from '@/context/AppContext';
@@ -6,20 +5,24 @@ import { Mic, Video, Phone, Flag, ThumbsUp, ThumbsDown, MicOff, Volume2, Volume1
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import webRTCService from '@/services/WebRTCService';
+import { supabase } from '@/integrations/supabase/client';
+import { User } from '@/types';
 
 const CallInterface: React.FC = () => {
   const { state, endCall, makeDecision, reportUser } = useApp();
-  const { callStage, callTimeRemaining, currentCall } = state;
+  const { callStage, callTimeRemaining, currentCall, currentUser, currentMatch } = state;
   const [reportReason, setReportReason] = useState("");
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1); // 1 = full volume, 0 = muted
   const { toast } = useToast();
+  const [matchedUser, setMatchedUser] = useState<User | null>(null);
+  const [connectionState, setConnectionState] = useState<RTCPeerConnectionState | null>(null);
   
   // Refs for audio/video
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
 
   // Format time remaining as mm:ss
   const formatTimeRemaining = (seconds: number) => {
@@ -28,76 +31,134 @@ const CallInterface: React.FC = () => {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // Setup camera/mic
+  // Fetch matched user details
   useEffect(() => {
-    if (callStage === 'voice' || callStage === 'video') {
-      const setupMedia = async () => {
-        try {
-          // Get user media based on call type
-          const constraints = {
-            audio: true,
-            video: callStage === 'video'
-          };
+    const fetchMatchedUser = async () => {
+      if (!currentMatch) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', currentMatch.matchedUserId)
+          .single();
           
-          const stream = await navigator.mediaDevices.getUserMedia(constraints);
-          localStreamRef.current = stream;
-          
-          // If it's a video call, set up local video
-          if (callStage === 'video' && localVideoRef.current) {
+        if (error) throw error;
+        
+        // Map the data to our User type
+        const user: User = {
+          id: data.id,
+          name: data.name || 'משתמש חדש',
+          age: data.age || 25,
+          gender: (data.gender as 'male' | 'female' | 'other') || 'other',
+          preferredGender: (data.preferred_gender as 'male' | 'female' | 'both' | 'all') || 'all',
+          location: data.location || "ישראל",
+          relationshipGoal: (data.relationship_goal as 'serious' | 'casual' | 'friendship') || 'casual',
+          premium: data.premium || false,
+          profilePicture: data.profile_picture || "/placeholder.svg",
+          bio: data.bio || undefined,
+        };
+        
+        setMatchedUser(user);
+      } catch (error) {
+        console.error('Error fetching matched user:', error);
+        toast({
+          title: "שגיאה בטעינת נתוני המשתמש",
+          description: "לא ניתן לטעון את נתוני המשתמש המותאם",
+          variant: "destructive",
+        });
+      }
+    };
+    
+    fetchMatchedUser();
+  }, [currentMatch]);
+
+  // Setup WebRTC when entering active call stage
+  useEffect(() => {
+    if ((callStage === 'voice' || callStage === 'video') && currentUser && matchedUser && currentCall) {
+      // Define event handlers
+      webRTCService.setEventHandlers({
+        onLocalStreamReady: (stream) => {
+          if (localVideoRef.current) {
             localVideoRef.current.srcObject = stream;
           }
-          
-          // In a real implementation, we would now connect to peer
-          // For demo, simulate remote connection
-          simulateRemoteConnection();
           
           toast({
             title: `${callStage === 'voice' ? 'שיחה קולית' : 'שיחת וידאו'} מוכנה`,
             description: `מכרופון ו${callStage === 'video' ? 'מצלמה ' : ''}מופעלים`
           });
-        } catch (error) {
-          console.error('Error setting up media:', error);
+        },
+        onRemoteStreamReady: (stream) => {
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = stream;
+          }
+          
           toast({
-            title: 'שגיאה בהגדרת המדיה',
-            description: 'לא ניתן לגשת למצלמה או למיקרופון',
-            variant: 'destructive'
+            title: "המשתתף השני התחבר",
+            description: "אתם מחוברים כעת"
+          });
+        },
+        onConnectionStateChange: (state) => {
+          setConnectionState(state);
+          
+          if (state === 'connected') {
+            toast({
+              title: "החיבור נוצר בהצלחה",
+              description: "אתם מחוברים כעת"
+            });
+          }
+        },
+        onCallEnded: () => {
+          toast({
+            title: "השיחה הסתיימה",
+            description: "החיבור נותק"
+          });
+          endCall();
+        },
+        onError: (error) => {
+          toast({
+            title: "שגיאה בשיחה",
+            description: error.message,
+            variant: "destructive"
           });
         }
-      };
+      });
       
-      setupMedia();
+      // Initialize the call
+      const isInitiator = currentUser.id === currentCall.id.split('-')[0];
+      webRTCService.initializeCall(
+        currentUser,
+        matchedUser,
+        currentCall.id,
+        callStage,
+        isInitiator
+      ).catch(error => {
+        console.error('Failed to initialize call:', error);
+        toast({
+          title: "שגיאה באתחול השיחה",
+          description: "לא ניתן ליצור חיבור",
+          variant: "destructive"
+        });
+      });
     }
     
-    // Cleanup on unmount
+    // Cleanup on unmount or when call stage changes
     return () => {
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-        localStreamRef.current = null;
+      if (callStage !== 'voice' && callStage !== 'video') {
+        webRTCService.endCall().catch(console.error);
       }
     };
-  }, [callStage]);
-
-  // Simulate a remote connection (for demo purposes)
-  const simulateRemoteConnection = () => {
-    // In a real app, this would involve WebRTC or other tech to connect peers
-    console.log('Simulating remote connection...');
-  };
+  }, [callStage, currentUser, matchedUser, currentCall]);
 
   // Handle muting
   const toggleMute = () => {
-    if (localStreamRef.current) {
-      const audioTracks = localStreamRef.current.getAudioTracks();
-      if (audioTracks.length > 0) {
-        const track = audioTracks[0];
-        track.enabled = isMuted; // Enable if currently muted, disable if unmuted
-        setIsMuted(!isMuted);
-        
-        toast({
-          title: isMuted ? 'מיקרופון מופעל' : 'מיקרופון מושתק',
-          description: isMuted ? 'אחרים יכולים לשמוע אותך עכשיו' : 'אחרים לא יכולים לשמוע אותך'
-        });
-      }
-    }
+    webRTCService.toggleMute(!isMuted);
+    setIsMuted(!isMuted);
+    
+    toast({
+      title: isMuted ? 'מיקרופון מופעל' : 'מיקרופון מושתק',
+      description: isMuted ? 'אחרים יכולים לשמוע אותך עכשיו' : 'אחרים לא יכולים לשמוע אותך'
+    });
   };
 
   // Handle volume change
@@ -110,7 +171,7 @@ const CallInterface: React.FC = () => {
     
     setVolume(newVolume);
     
-    // In a real implementation, we would adjust the remote audio volume
+    // Adjust remote audio volume
     if (remoteVideoRef.current) {
       remoteVideoRef.current.volume = newVolume;
     }
@@ -122,9 +183,18 @@ const CallInterface: React.FC = () => {
 
   const handleReport = () => {
     if (reportReason.trim()) {
-      reportUser("2", reportReason); // Using mock ID for reported user
+      reportUser(matchedUser?.id || "", reportReason);
       setReportDialogOpen(false);
     }
+  };
+
+  const handleEndCall = () => {
+    webRTCService.endCall().then(() => {
+      endCall();
+    }).catch(error => {
+      console.error('Error ending call:', error);
+      endCall(); // End call in app state even if there's an error
+    });
   };
 
   // Preparation stage - quick tips before starting the call
@@ -163,7 +233,15 @@ const CallInterface: React.FC = () => {
           <Mic className="text-white" size={48} />
         </div>
         
-        <p className="text-lg font-medium">שיחה עם מישהו חדש</p>
+        <p className="text-lg font-medium">
+          {connectionState === 'connected' 
+            ? `שיחה עם ${matchedUser?.name || 'מישהו חדש'}`
+            : connectionState === 'connecting' 
+              ? 'מתחבר...'
+              : 'ממתין לחיבור...'}
+        </p>
+        
+        <audio ref={remoteVideoRef} autoPlay playsInline className="hidden" />
         
         <div className="flex items-center gap-4 mt-4">
           <Button 
@@ -214,7 +292,7 @@ const CallInterface: React.FC = () => {
           </Dialog>
           
           <Button 
-            onClick={endCall} 
+            onClick={handleEndCall} 
             className="rounded-full h-14 w-14 p-0 flex items-center justify-center bg-dating-danger hover:bg-red-700"
           >
             <Phone size={24} className="rotate-135" />
@@ -240,7 +318,6 @@ const CallInterface: React.FC = () => {
         </div>
         
         <div className="w-full aspect-video bg-gray-200 rounded-lg relative overflow-hidden">
-          {/* This would be the video stream in a real implementation */}
           <video 
             ref={remoteVideoRef}
             autoPlay 
@@ -309,7 +386,7 @@ const CallInterface: React.FC = () => {
           </Dialog>
           
           <Button 
-            onClick={endCall} 
+            onClick={handleEndCall} 
             className="rounded-full h-12 w-12 p-0 flex items-center justify-center bg-dating-danger hover:bg-red-700"
           >
             <Phone size={20} className="rotate-135" />
