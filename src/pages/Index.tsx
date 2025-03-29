@@ -13,6 +13,28 @@ const Index = () => {
   const { state } = useApp();
   const { currentUser, callStage } = state;
 
+  // Update site URL for proper redirects if not already set
+  useEffect(() => {
+    const updateSiteUrl = async () => {
+      // Get current URL
+      const currentUrl = window.location.origin;
+      
+      // Check if we're in a browser environment
+      if (typeof window !== 'undefined' && window.localStorage) {
+        // Get stored URL
+        const storedUrl = localStorage.getItem('siteUrl');
+        
+        // Only update if URL has changed
+        if (storedUrl !== currentUrl) {
+          localStorage.setItem('siteUrl', currentUrl);
+          console.log('Site URL updated to:', currentUrl);
+        }
+      }
+    };
+
+    updateSiteUrl();
+  }, []);
+
   // If user is not logged in, show auth form
   if (!currentUser) {
     return (

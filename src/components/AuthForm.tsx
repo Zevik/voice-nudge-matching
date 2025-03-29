@@ -8,6 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Heart } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from "@/components/ui/use-toast";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { InfoIcon } from "lucide-react";
 
 const AuthForm: React.FC = () => {
   const { setAuthUser } = useApp();
@@ -18,10 +20,12 @@ const AuthForm: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [emailVerificationRequired, setEmailVerificationRequired] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setEmailVerificationRequired(false);
     
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -30,6 +34,11 @@ const AuthForm: React.FC = () => {
       });
 
       if (error) {
+        // Check specifically for email verification error
+        if (error.message.includes('Email not confirmed')) {
+          setEmailVerificationRequired(true);
+          throw new Error('אימייל לא מאומת. אנא בדוק את תיבת הדואר שלך לקבלת הוראות אימות, או לחץ על כפתור שליחת מייל אימות מחדש.');
+        }
         throw error;
       }
 
@@ -68,6 +77,7 @@ const AuthForm: React.FC = () => {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setEmailVerificationRequired(false);
 
     if (!name || !age || !email || !password) {
       toast({
@@ -98,13 +108,27 @@ const AuthForm: React.FC = () => {
       }
 
       if (data.user) {
-        // Set the user in the application context
-        setAuthUser(data.user, data.session);
-        
-        toast({
-          title: "נרשמת בהצלחה",
-          description: "ברוך הבא לVoiceMatch!",
-        });
+        if (data.user.identities && data.user.identities.length === 0) {
+          toast({
+            title: "משתמש קיים",
+            description: "כתובת האימייל כבר רשומה במערכת. נסה להתחבר או לאפס סיסמה.",
+            variant: "destructive",
+          });
+        } else if (!data.session) {
+          setEmailVerificationRequired(true);
+          toast({
+            title: "הרשמה בוצעה בהצלחה",
+            description: "אנא אמת את כתובת האימייל שלך כדי להתחבר. בדוק את תיבת הדואר הנכנס שלך.",
+          });
+        } else {
+          // Set the user in the application context
+          setAuthUser(data.user, data.session);
+          
+          toast({
+            title: "נרשמת בהצלחה",
+            description: "ברוך הבא לVoiceMatch!",
+          });
+        }
       }
     } catch (error: any) {
       toast({
@@ -118,6 +142,30 @@ const AuthForm: React.FC = () => {
     }
   };
 
+  const resendVerificationEmail = async () => {
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "מייל אימות נשלח",
+        description: "בדוק את תיבת הדואר הנכנס שלך לקבלת הוראות אימות",
+      });
+    } catch (error: any) {
+      toast({
+        title: "שליחת מייל נכשלה",
+        description: error.message || "אירעה שגיאה בשליחת מייל אימות, נסה שנית",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="w-full max-w-md mx-auto p-6 dating-card">
       <div className="flex flex-col items-center mb-6">
@@ -127,6 +175,23 @@ const AuthForm: React.FC = () => {
         <h1 className="text-3xl font-bold dating-gradient-text">VoiceMatch</h1>
         <p className="text-gray-600 mt-2">התחבר דרך שיחות</p>
       </div>
+
+      {emailVerificationRequired && (
+        <Alert className="mb-6 bg-amber-50 border-amber-200">
+          <InfoIcon className="h-4 w-4 text-amber-600" />
+          <AlertTitle className="text-amber-700">דרוש אימות אימייל</AlertTitle>
+          <AlertDescription className="text-amber-700">
+            נשלח אליך מייל אימות. אנא בדוק את תיבת הדואר הנכנס שלך ולחץ על הקישור המצורף.
+            <Button 
+              variant="link" 
+              className="p-0 h-auto text-amber-800 underline"
+              onClick={resendVerificationEmail}
+            >
+              לחץ כאן לשליחת מייל אימות חדש
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Tabs defaultValue="login">
         <TabsList className="grid grid-cols-2 mb-6">
