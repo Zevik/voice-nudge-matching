@@ -16,6 +16,8 @@ const MatchFinder: React.FC = () => {
 
   // Function to set up real-time presence
   const setupPresence = () => {
+    if (!currentUser) return null;
+    
     // Create a unique channel for active users
     const channel = supabase.channel('active_users');
 
@@ -30,23 +32,20 @@ const MatchFinder: React.FC = () => {
         Object.keys(state).forEach(key => {
           // Each key can have multiple presences (e.g., from different tabs)
           state[key].forEach((presence: any) => {
-            if (presence.user && presence.user.id !== currentUser?.id) {
+            if (presence.user && presence.user.id !== currentUser.id) {
               users.push(presence.user);
             }
           });
         });
         
         setActiveUsers(users);
+        console.log("Active users updated:", users);
       })
       .on('presence', { event: 'join' }, ({ key, newPresences }) => {
         console.log('User joined:', key, newPresences);
-        // A new user has joined, update the active users list
-        // Note: We rely on the 'sync' event to update the state
       })
       .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
         console.log('User left:', key, leftPresences);
-        // A user has left, update the active users list
-        // Note: We rely on the 'sync' event to update the state
       })
       .subscribe(async (status) => {
         if (status !== 'SUBSCRIBED' || !currentUser) return;
@@ -55,9 +54,10 @@ const MatchFinder: React.FC = () => {
         await channel.track({
           user: currentUser,
           online_at: new Date().toISOString(),
-          searching: true
+          searching: isSearchingMatch
         });
         
+        console.log("Channel subscribed, tracking user presence:", currentUser.id);
         setPresenceChannel(channel);
       });
       
@@ -68,44 +68,46 @@ const MatchFinder: React.FC = () => {
   useEffect(() => {
     let channel: any = null;
     
-    if (isSearchingMatch && currentUser) {
+    if (currentUser) {
       channel = setupPresence();
+      console.log("Setting up presence channel", channel);
     }
     
     return () => {
       if (channel) {
+        console.log("Removing presence channel");
         supabase.removeChannel(channel);
       }
     };
-  }, [isSearchingMatch, currentUser?.id]);
+  }, [currentUser?.id, isSearchingMatch]);
 
-  // Function to fetch active users (fallback for when realtime is not available)
+  // Function to fetch active users (as a fallback)
   const fetchActiveUsers = async () => {
     try {
-      // In a real app, we would query for users who are currently "searching"
-      // For demo purposes, let's fetch some random users 
+      console.log("Fetching active users from database");
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .neq('id', currentUser?.id || '')
-        .limit(5);
+        .limit(10);
       
       if (error) throw error;
       
-      // Map the data to our User type with proper type handling
+      // Map the data to our User type
       const mappedUsers = data.map(profile => ({
         id: profile.id,
-        name: profile.name || 'משתמש חדש',
+        name: profile.name || 'New User',
         age: profile.age || 25,
         gender: (profile.gender as 'male' | 'female' | 'other') || 'other',
         preferredGender: (profile.preferred_gender as 'male' | 'female' | 'both' | 'all') || 'all',
-        location: profile.location || "ישראל",
+        location: profile.location || "Israel",
         relationshipGoal: (profile.relationship_goal as 'serious' | 'casual' | 'friendship') || 'casual',
         premium: profile.premium || false,
         profilePicture: profile.profile_picture || "/placeholder.svg",
         bio: profile.bio || undefined,
       }));
       
+      console.log("Fetched users:", mappedUsers);
       setActiveUsers(mappedUsers);
     } catch (error) {
       console.error('Error fetching active users:', error);
@@ -117,12 +119,24 @@ const MatchFinder: React.FC = () => {
     }
   };
 
-  // Fetch active users when component mounts or when searching status changes
+  // If presence channel doesn't find users, fallback to fetchActiveUsers
   useEffect(() => {
     if (isSearchingMatch && activeUsers.length === 0) {
       fetchActiveUsers();
     }
-  }, [isSearchingMatch, currentUser?.id]);
+  }, [isSearchingMatch]);
+
+  // Update presence when searching status changes
+  useEffect(() => {
+    if (presenceChannel && currentUser) {
+      presenceChannel.track({
+        user: currentUser,
+        online_at: new Date().toISOString(),
+        searching: isSearchingMatch
+      });
+      console.log("Updated user presence - searching:", isSearchingMatch);
+    }
+  }, [isSearchingMatch]);
 
   // Stop tracking presence when component unmounts or user stops searching
   useEffect(() => {
@@ -132,6 +146,33 @@ const MatchFinder: React.FC = () => {
       }
     };
   }, []);
+
+  // Function to initiate a match with another user
+  const initiateMatch = (otherUser: User) => {
+    if (!currentUser) return;
+    
+    console.log("Initiating match with user:", otherUser.id);
+    
+    // Create a match directly in the database
+    supabase.from('matches').insert({
+      user_id: currentUser.id,
+      matched_user_id: otherUser.id,
+      status: 'pending'
+    }).then(({ error }) => {
+      if (error) {
+        console.error("Error creating match:", error);
+        toast({
+          title: "שגיאה ביצירת התאמה",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Set the match in app state
+      acceptMatch(`${currentUser.id}-${otherUser.id}`);
+    });
+  };
 
   return (
     <div className="dating-card flex flex-col items-center gap-6 max-w-md w-full mx-auto">
@@ -182,19 +223,7 @@ const MatchFinder: React.FC = () => {
                   </div>
                   <Button 
                     className="dating-button-sm"
-                    onClick={() => {
-                      // Create a match with this user
-                      const mockMatch = {
-                        id: `${currentUser?.id}-${user.id}-${Date.now()}`,
-                        userId: currentUser?.id || "",
-                        matchedUserId: user.id,
-                        status: 'pending' as const,
-                        createdAt: new Date(),
-                      };
-                      
-                      // Update app state with this match
-                      acceptMatch(mockMatch.id);
-                    }}
+                    onClick={() => initiateMatch(user)}
                   >
                     <Mic size={16} />
                   </Button>
