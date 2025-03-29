@@ -7,7 +7,6 @@ import MatchFinder from '@/components/MatchFinder';
 import CallInterface from '@/components/CallInterface';
 import ProfileSection from '@/components/ProfileSection';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { supabase } from '@/integrations/supabase/client';
 
 const Index = () => {
   const { state } = useApp();
@@ -65,11 +64,11 @@ const Index = () => {
           <TabsTrigger value="profile">פרופיל</TabsTrigger>
         </TabsList>
         
-        <TabsContent value="match">
+        <TabsContent value="match" className="focus-visible:outline-none focus-visible:ring-0">
           <MatchFinder />
         </TabsContent>
         
-        <TabsContent value="profile">
+        <TabsContent value="profile" className="focus-visible:outline-none focus-visible:ring-0">
           <ProfileSection />
         </TabsContent>
       </Tabs>

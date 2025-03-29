@@ -110,33 +110,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [state.callTimeRemaining, state.callStage]);
 
-  // Mock function to simulate finding a match
+  // Modified function to handle finding a match - use real users
   useEffect(() => {
     if (state.isSearchingMatch && !state.currentMatch) {
-      const findMatchTimeout = setTimeout(() => {
-        const mockMatch: Match = {
-          id: Math.random().toString(36).substring(7),
-          userId: state.currentUser?.id || "",
-          matchedUserId: "2", // mock ID for the matched user
-          status: 'pending',
-          createdAt: new Date(),
-        };
-        
-        setState(prev => ({
-          ...prev,
-          currentMatch: mockMatch,
-          isSearchingMatch: false,
-        }));
-        
-        toast({
-          title: "Match Found!",
-          description: "Someone is available to chat. Get ready!",
-        });
-      }, 3000); // Simulate a 3 second search
-
-      return () => clearTimeout(findMatchTimeout);
+      // Don't auto-generate matches anymore, let user choose from the list
+      console.log('Searching for matches - users now select from active users list');
     }
-  }, [state.isSearchingMatch, state.currentMatch, state.currentUser?.id, toast]);
+  }, [state.isSearchingMatch, state.currentMatch]);
 
   const setAuthUser = (supabaseUser: SupabaseUser, session: Session | null, profile?: any) => {
     const userProfile: User = {
@@ -193,6 +173,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       
       // Auto-start voice call after accepting match
       startCall(matchId, 'voice', 3 * 60); // 3 minutes for voice call
+    } else {
+      // This is a new match - create it and accept it
+      const newMatch = {
+        id: matchId,
+        userId: state.currentUser?.id || "",
+        matchedUserId: "other-user-id", // In a real app, this would be the ID of another user
+        status: 'accepted',
+        createdAt: new Date(),
+      };
+      
+      setState(prev => ({
+        ...prev,
+        currentMatch: newMatch,
+      }));
+      
+      // Auto-start voice call
+      startCall(matchId, 'voice', 3 * 60); // 3 minutes for voice call
     }
   };
 
@@ -211,7 +208,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Modified startCall for WebRTC in future
   const startCall = (matchId: string, type: 'voice' | 'video', duration: number) => {
+    // Create call object
     const call: Call = {
       id: Math.random().toString(36).substring(7),
       matchId,
@@ -221,20 +220,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       duration: duration,
     };
     
+    // First show preparation screen
     setState(prev => ({
       ...prev,
       currentCall: call,
       callTimeRemaining: duration,
-      callStage: type === 'voice' ? 'voice' : 'video',
+      callStage: 'preparing',
     }));
     
-    // Show a quick preparation screen before starting the call
+    // After preparation, start actual call
     setTimeout(() => {
+      setState(prev => ({
+        ...prev,
+        callStage: type === 'voice' ? 'voice' : 'video',
+      }));
+      
       toast({
         title: `${type === 'voice' ? 'שיחה קולית' : 'שיחת וידאו'} התחילה`,
         description: `יש לך ${Math.floor(duration / 60)} דקות לשוחח.`,
       });
     }, 2000);
+    
+    // In a real app, this is where we would initialize WebRTC connection
+    console.log('In a real app, WebRTC would be initialized here');
   };
 
   const endCall = () => {
