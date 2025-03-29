@@ -1,12 +1,55 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+
+import React from 'react';
+import { useApp } from '@/context/AppContext';
+import Header from '@/components/Header';
+import AuthForm from '@/components/AuthForm';
+import MatchFinder from '@/components/MatchFinder';
+import CallInterface from '@/components/CallInterface';
+import ProfileSection from '@/components/ProfileSection';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const Index = () => {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-gray-600">Start building your amazing project here!</p>
+  const { state } = useApp();
+  const { currentUser, callStage } = state;
+
+  // If user is not logged in, show auth form
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen py-10 px-4 bg-dating-background">
+        <AuthForm />
       </div>
+    );
+  }
+
+  // If user is in a call, show call interface
+  if (callStage !== 'none') {
+    return (
+      <div className="min-h-screen py-6 px-4 bg-dating-background">
+        <Header />
+        <CallInterface />
+      </div>
+    );
+  }
+
+  // Normal logged-in view with tabs
+  return (
+    <div className="min-h-screen py-6 px-4 bg-dating-background">
+      <Header />
+      
+      <Tabs defaultValue="match" className="w-full">
+        <TabsList className="grid grid-cols-2 mb-6">
+          <TabsTrigger value="match">Match</TabsTrigger>
+          <TabsTrigger value="profile">Profile</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="match">
+          <MatchFinder />
+        </TabsContent>
+        
+        <TabsContent value="profile">
+          <ProfileSection />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
