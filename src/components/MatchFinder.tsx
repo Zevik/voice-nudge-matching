@@ -26,18 +26,18 @@ const MatchFinder: React.FC = () => {
       
       if (error) throw error;
       
-      // Map the data to our User type
+      // Map the data to our User type with proper type handling
       const mappedUsers = data.map(profile => ({
         id: profile.id,
         name: profile.name || 'משתמש חדש',
         age: profile.age || 25,
-        gender: profile.gender || 'other',
-        preferredGender: profile.preferred_gender || 'all',
+        gender: (profile.gender as 'male' | 'female' | 'other') || 'other',
+        preferredGender: (profile.preferred_gender as 'male' | 'female' | 'both' | 'all') || 'all',
         location: profile.location || "ישראל",
-        relationshipGoal: profile.relationship_goal || 'casual',
+        relationshipGoal: (profile.relationship_goal as 'serious' | 'casual' | 'friendship') || 'casual',
         premium: profile.premium || false,
         profilePicture: profile.profile_picture || "/placeholder.svg",
-        bio: profile.bio,
+        bio: profile.bio || undefined,
       }));
       
       setActiveUsers(mappedUsers);
