@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useApp } from '@/context/AppContext';
@@ -134,7 +135,7 @@ const MatchFinder: React.FC = () => {
                         id: Math.random().toString(36).substring(7),
                         userId: currentUser?.id || "",
                         matchedUserId: user.id,
-                        status: 'pending',
+                        status: 'pending' as const,
                         createdAt: new Date(),
                       };
                       
