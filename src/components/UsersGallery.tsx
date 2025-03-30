@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { User, DbLike } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
@@ -22,57 +21,19 @@ const UsersGallery: React.FC = () => {
       try {
         setLoading(true);
         
-        console.log('Current user ID:', currentUser.id);
-        
-        // Debug check: Let's first check if profiles exist at all
-        const { count, error: countError } = await supabase
-          .from('profiles')
-          .select('*', { count: 'exact', head: true });
-        
-        console.log('Total profiles count in database:', count);
-        
-        if (countError) {
-          console.error('Error counting profiles:', countError);
-        }
-        
-        // Fetch all profiles to debug
+        // Fetch all profiles, excluding the current user
         const { data: allProfiles, error: profilesError } = await supabase
           .from('profiles')
-          .select('*');
+          .select('*')
+          .neq('id', currentUser.id);
         
         if (profilesError) {
           console.error('Error fetching users:', profilesError);
           throw profilesError;
         }
         
-        console.log('All profiles from DB:', allProfiles);
-        
-        // For debugging, log all profile IDs
-        if (allProfiles && allProfiles.length > 0) {
-          console.log('Profile IDs in database:', allProfiles.map(p => p.id));
-          console.log('Current user ID for comparison:', currentUser.id);
-        }
-        
-        if (!allProfiles || allProfiles.length === 0) {
-          console.log('No profiles found in database');
-          setUsers([]);
-          setLoading(false);
-          return;
-        }
-        
-        // Filter out the current user manually
-        const otherProfiles = allProfiles.filter(profile => profile.id !== currentUser.id);
-        console.log('Filtered profiles (excluding current user):', otherProfiles);
-        
-        if (otherProfiles.length === 0) {
-          console.log('No other users found after filtering');
-          setUsers([]);
-          setLoading(false);
-          return;
-        }
-        
         // Convert DB format to our User type and provide default values for missing fields
-        const mappedUsers = otherProfiles.map(profile => ({
+        const mappedUsers = allProfiles.map(profile => ({
           id: profile.id,
           name: profile.name || 'משתמש',
           age: profile.age || 25,
@@ -85,7 +46,6 @@ const UsersGallery: React.FC = () => {
           premium: profile.premium || false,
         }));
         
-        console.log('Mapped users:', mappedUsers);
         setUsers(mappedUsers);
       } catch (error) {
         console.error('Error in users fetch flow:', error);
