@@ -79,6 +79,8 @@ const UsersGallery: React.FC = () => {
         // Extract liked user IDs
         const likedUserIds = data.map((like) => like.liked_user_id);
         setLikedUsers(likedUserIds);
+        
+        console.log('Fetched likes for current user:', data);
       } catch (error) {
         console.error('Error fetching likes:', error);
       }
@@ -88,7 +90,7 @@ const UsersGallery: React.FC = () => {
 
     // Set up real-time subscription for likes
     const likesChannel = supabase
-      .channel('public:likes')
+      .channel('likes-changes')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
@@ -160,10 +162,10 @@ const UsersGallery: React.FC = () => {
           .single();
         
         if (mutualError) {
-          if (mutualError.code !== 'PGRST116') { // Not found error is expected if no mutual like
-            console.error('Error checking mutual like:', mutualError);
-          } else {
+          if (mutualError.code === 'PGRST116') { // Not found error is expected if no mutual like
             console.log('No mutual like found');
+          } else {
+            console.error('Error checking mutual like:', mutualError);
           }
           return; // Exit if no mutual like or error checking
         }
@@ -180,7 +182,7 @@ const UsersGallery: React.FC = () => {
         
         if (checkMatchError) {
           console.error('Error checking existing match:', checkMatchError);
-          throw checkMatchError;
+          return;
         }
         
         // Only create a match if one doesn't already exist
@@ -214,11 +216,11 @@ const UsersGallery: React.FC = () => {
           console.log('Match already exists:', existingMatch);
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error handling like:', error);
       toast({
         title: "שגיאה בהוספת לייק",
-        description: "אירעה שגיאה בעת הוספת לייק",
+        description: error.message || "אירעה שגיאה בעת הוספת לייק",
         variant: "destructive",
       });
     }

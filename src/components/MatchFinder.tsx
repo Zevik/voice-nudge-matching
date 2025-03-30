@@ -100,7 +100,7 @@ const MatchFinder: React.FC = () => {
 
     // Set up real-time subscription for matches
     const matchesChannel = supabase
-      .channel('matches-changes')
+      .channel('matches-channel')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
