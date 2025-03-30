@@ -17,8 +17,6 @@ interface AppContextType {
   endCall: () => void;
   makeDecision: (decision: 'continue' | 'end') => void;
   reportUser: (reportedUserId: string, reason: string) => void;
-  likeUser: (userId: string) => Promise<void>;
-  getLikedStatus: (userId: string) => Promise<boolean>;
 }
 
 // Initial state
@@ -49,45 +47,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
-  // Check for existing session on load
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-
-        setAuthUser(session.user, session, profile);
-      }
-    };
-    
-    checkSession();
-    
-    // Subscribe to auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' && session) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-            
-          setAuthUser(session.user, session, profile);
-        } else if (event === 'SIGNED_OUT') {
-          setState(initialState);
-        }
-      }
-    );
-    
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
   // Setup realtime subscription for matches when user is logged in
   useEffect(() => {
     if (!state.currentUser) return;
@@ -107,27 +66,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (payload.eventType === 'INSERT') {
           const matchData = payload.new as DbMatch;
           
-          // Check if it's a mutual match (both users liked each other)
-          if (matchData.status === 'mutual') {
-            const newMatch: Match = {
-              id: matchData.id,
-              userId: matchData.user_id,
-              matchedUserId: matchData.matched_user_id,
-              status: 'pending',
-              createdAt: new Date(matchData.created_at),
-            };
-            
-            setState(prev => ({
-              ...prev,
-              currentMatch: newMatch,
-              isSearchingMatch: false
-            }));
-            
-            toast({
-              title: "התאמה חדשה!",
-              description: "מישהו סימן לך לייק בחזרה, מתאים לך להתחיל שיחה?",
-            });
-          }
+          const newMatch: Match = {
+            id: matchData.id,
+            userId: matchData.user_id,
+            matchedUserId: matchData.matched_user_id,
+            status: matchData.status as 'pending' | 'accepted' | 'rejected' | 'completed',
+            createdAt: new Date(matchData.created_at),
+          };
+          
+          setState(prev => ({
+            ...prev,
+            currentMatch: newMatch,
+            isSearchingMatch: false
+          }));
+          
+          toast({
+            title: "התאמה חדשה!",
+            description: "מישהו זמין לשיחה כרגע.",
+          });
         }
         
         // Handle match updates
@@ -181,30 +137,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }, (payload) => {
         console.log('Incoming match received:', payload);
         
-        // Handle new incoming match - only mutual matches will show notification
+        // Handle new incoming match
         if (payload.eventType === 'INSERT') {
           const matchData = payload.new as DbMatch;
           
-          if (matchData.status === 'mutual') {
-            const newMatch: Match = {
-              id: matchData.id,
-              userId: matchData.user_id,
-              matchedUserId: matchData.matched_user_id,
-              status: 'pending',
-              createdAt: new Date(matchData.created_at),
-            };
-            
-            setState(prev => ({
-              ...prev,
-              currentMatch: newMatch,
-              isSearchingMatch: false
-            }));
-            
-            toast({
-              title: "התאמה הדדית!",
-              description: "מישהו סימן לך לייק והתאמתם. רוצה להתחיל שיחה?",
-            });
-          }
+          const newMatch: Match = {
+            id: matchData.id,
+            userId: matchData.user_id,
+            matchedUserId: matchData.matched_user_id,
+            status: matchData.status as 'pending' | 'accepted' | 'rejected' | 'completed',
+            createdAt: new Date(matchData.created_at),
+          };
+          
+          setState(prev => ({
+            ...prev,
+            currentMatch: newMatch,
+            isSearchingMatch: false
+          }));
+          
+          toast({
+            title: "התאמה חדשה!",
+            description: "מישהו רוצה להתחבר איתך.",
+          });
         }
       })
       .subscribe();
@@ -543,106 +497,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Like a user - new function
-  const likeUser = async (likedUserId: string) => {
-    if (!state.currentUser) return;
-    
-    try {
-      // Check if there's already a match from the other user to this user
-      const { data: existingMatches, error: matchError } = await supabase
-        .from('matches')
-        .select('*')
-        .eq('user_id', likedUserId)
-        .eq('matched_user_id', state.currentUser.id)
-        .single();
-      
-      if (matchError && matchError.code !== 'PGRST116') {
-        // Real error, not just "no rows returned"
-        throw matchError;
-      }
-      
-      // Check if we already liked this user
-      const { data: alreadyLiked, error: likedError } = await supabase
-        .from('matches')
-        .select('*')
-        .eq('user_id', state.currentUser.id)
-        .eq('matched_user_id', likedUserId)
-        .single();
-        
-      if (!likedError && alreadyLiked) {
-        // We already liked this user, no need to create a new record
-        toast({
-          title: "כבר סימנת לייק",
-          description: "כבר סימנת לייק למשתמש זה",
-        });
-        return;
-      }
-      
-      let matchStatus = 'liked';
-      
-      // If the other user already liked us, this is a mutual match!
-      if (existingMatches) {
-        matchStatus = 'mutual';
-        
-        // Update the existing match to mutual
-        await supabase
-          .from('matches')
-          .update({ status: 'mutual' })
-          .eq('id', existingMatches.id);
-      }
-      
-      // Create a new match record
-      const { error } = await supabase
-        .from('matches')
-        .insert({
-          user_id: state.currentUser.id,
-          matched_user_id: likedUserId,
-          status: matchStatus
-        });
-        
-      if (error) throw error;
-      
-      if (matchStatus === 'mutual') {
-        toast({
-          title: "התאמה הדדית!",
-          description: "גם הצד השני סימן לך לייק, תוכלו להתחיל שיחה!",
-        });
-      } else {
-        toast({
-          title: "סימנת לייק",
-          description: "אם הצד השני יסמן לך גם לייק, תקבלו התראה להתחיל שיחה",
-        });
-      }
-    } catch (error) {
-      console.error('Error liking user:', error);
-      toast({
-        title: "שגיאה בסימון לייק",
-        description: "נסה שוב מאוחר יותר",
-        variant: "destructive",
-      });
-    }
-  };
-  
-  // Check if user already liked another user
-  const getLikedStatus = async (userId: string): Promise<boolean> => {
-    if (!state.currentUser) return false;
-    
-    try {
-      const { data, error } = await supabase
-        .from('matches')
-        .select('*')
-        .eq('user_id', state.currentUser.id)
-        .eq('matched_user_id', userId);
-        
-      if (error) throw error;
-      
-      return data && data.length > 0;
-    } catch (error) {
-      console.error('Error checking like status:', error);
-      return false;
-    }
-  };
-
   return (
     <AppContext.Provider
       value={{
@@ -656,9 +510,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         startCall,
         endCall,
         makeDecision,
-        reportUser,
-        likeUser,
-        getLikedStatus
+        reportUser
       }}
     >
       {children}

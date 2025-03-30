@@ -54,7 +54,7 @@ export interface DbMatch {
   id: string;
   user_id: string;
   matched_user_id: string;
-  status: string; // 'liked', 'mutual', 'accepted', 'rejected', 'completed'
+  status: string;
   created_at: string;
   updated_at: string;
 }

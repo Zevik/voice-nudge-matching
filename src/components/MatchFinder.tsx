@@ -1,152 +1,248 @@
-
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useApp } from '@/context/AppContext';
-import { Mic, Video, Heart, X, Loader2 } from 'lucide-react';
+import { Mic, Video, Search, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, DbMatch } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 
 const MatchFinder: React.FC = () => {
-  const { state, acceptMatch, rejectMatch, likeUser, getLikedStatus } = useApp();
-  const { currentUser, currentMatch } = state;
+  const { state, startSearchingMatch, stopSearchingMatch, acceptMatch, rejectMatch } = useApp();
+  const { currentUser, isSearchingMatch, currentMatch } = state;
   const { toast } = useToast();
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [likedUsers, setLikedUsers] = useState<Record<string, boolean>>({});
+  const [activeUsers, setActiveUsers] = useState<User[]>([]);
+  const [presenceChannel, setPresenceChannel] = useState<any>(null);
 
-  // Fetch all users on component mount
-  useEffect(() => {
-    const fetchUsers = async () => {
-      if (!currentUser) return;
-      
-      try {
-        setLoading(true);
-        
-        // Fetch all users except current user
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .neq('id', currentUser.id);
-          
-        if (error) throw error;
-        
-        // Map the data to our User type
-        const mappedUsers = data.map(profile => ({
-          id: profile.id,
-          name: profile.name || 'New User',
-          age: profile.age || 25,
-          gender: (profile.gender as 'male' | 'female' | 'other') || 'other',
-          preferredGender: (profile.preferred_gender as 'male' | 'female' | 'both' | 'all') || 'all',
-          location: profile.location || "Israel",
-          relationshipGoal: (profile.relationship_goal as 'serious' | 'casual' | 'friendship') || 'casual',
-          premium: profile.premium || false,
-          profilePicture: profile.profile_picture || "/placeholder.svg",
-          bio: profile.bio || undefined,
-        }));
-        
-        setUsers(mappedUsers);
+  // Function to set up real-time presence
+  const setupPresence = () => {
+    if (!currentUser) return null;
+    
+    // Create a unique channel for active users
+    const channel = supabase.channel('active_users');
 
-        // Check which users are already liked
-        const likeStatus: Record<string, boolean> = {};
-        for (const user of mappedUsers) {
-          likeStatus[user.id] = await getLikedStatus(user.id);
-        }
-        setLikedUsers(likeStatus);
+    // Set up presence tracking
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        // Get the current state of all users
+        const state = channel.presenceState();
         
-      } catch (error) {
-        console.error('Error fetching users:', error);
-        toast({
-          title: "שגיאה בטעינת משתמשים",
-          description: "לא ניתן לטעון את רשימת המשתמשים",
-          variant: "destructive",
+        // Convert presence state to array of users
+        const users: User[] = [];
+        Object.keys(state).forEach(key => {
+          // Each key can have multiple presences (e.g., from different tabs)
+          state[key].forEach((presence: any) => {
+            if (presence.user && presence.user.id !== currentUser.id) {
+              users.push(presence.user);
+            }
+          });
         });
-      } finally {
-        setLoading(false);
+        
+        setActiveUsers(users);
+        console.log("Active users updated:", users);
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        console.log('User joined:', key, newPresences);
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        console.log('User left:', key, leftPresences);
+      })
+      .subscribe(async (status) => {
+        if (status !== 'SUBSCRIBED' || !currentUser) return;
+        
+        // Start tracking this user's presence
+        await channel.track({
+          user: currentUser,
+          online_at: new Date().toISOString(),
+          searching: isSearchingMatch
+        });
+        
+        console.log("Channel subscribed, tracking user presence:", currentUser.id);
+        setPresenceChannel(channel);
+      });
+      
+    return channel;
+  };
+
+  // Set up or clean up presence tracking when searching status changes
+  useEffect(() => {
+    let channel: any = null;
+    
+    if (currentUser) {
+      channel = setupPresence();
+      console.log("Setting up presence channel", channel);
+    }
+    
+    return () => {
+      if (channel) {
+        console.log("Removing presence channel");
+        supabase.removeChannel(channel);
       }
     };
+  }, [currentUser?.id, isSearchingMatch]);
 
-    fetchUsers();
-    
-    // Subscribe to match updates
-    const matchesSubscription = supabase
-      .channel('public:matches')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'matches',
-      }, () => {
-        // Refresh users when matches change
-        fetchUsers();
-      })
-      .subscribe();
+  // Function to fetch active users (as a fallback)
+  const fetchActiveUsers = async () => {
+    try {
+      console.log("Fetching active users from database");
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .neq('id', currentUser?.id || '')
+        .limit(10);
       
-    return () => {
-      supabase.removeChannel(matchesSubscription);
-    };
-  }, [currentUser]);
+      if (error) throw error;
+      
+      // Map the data to our User type
+      const mappedUsers = data.map(profile => ({
+        id: profile.id,
+        name: profile.name || 'New User',
+        age: profile.age || 25,
+        gender: (profile.gender as 'male' | 'female' | 'other') || 'other',
+        preferredGender: (profile.preferred_gender as 'male' | 'female' | 'both' | 'all') || 'all',
+        location: profile.location || "Israel",
+        relationshipGoal: (profile.relationship_goal as 'serious' | 'casual' | 'friendship') || 'casual',
+        premium: profile.premium || false,
+        profilePicture: profile.profile_picture || "/placeholder.svg",
+        bio: profile.bio || undefined,
+      }));
+      
+      console.log("Fetched users:", mappedUsers);
+      setActiveUsers(mappedUsers);
+    } catch (error) {
+      console.error('Error fetching active users:', error);
+      toast({
+        title: "שגיאה בטעינת משתמשים",
+        description: "לא ניתן לטעון משתמשים פעילים",
+        variant: "destructive",
+      });
+    }
+  };
 
-  // Handle liking a user
-  const handleLike = async (userId: string) => {
-    await likeUser(userId);
+  // If presence channel doesn't find users, fallback to fetchActiveUsers
+  useEffect(() => {
+    if (isSearchingMatch && activeUsers.length === 0) {
+      fetchActiveUsers();
+    }
+  }, [isSearchingMatch]);
+
+  // Update presence when searching status changes
+  useEffect(() => {
+    if (presenceChannel && currentUser) {
+      presenceChannel.track({
+        user: currentUser,
+        online_at: new Date().toISOString(),
+        searching: isSearchingMatch
+      });
+      console.log("Updated user presence - searching:", isSearchingMatch);
+    }
+  }, [isSearchingMatch]);
+
+  // Stop tracking presence when component unmounts or user stops searching
+  useEffect(() => {
+    return () => {
+      if (presenceChannel) {
+        supabase.removeChannel(presenceChannel);
+      }
+    };
+  }, []);
+
+  // Function to initiate a match with another user
+  const initiateMatch = (otherUser: User) => {
+    if (!currentUser) return;
     
-    // Update the local liked state
-    setLikedUsers(prev => ({
-      ...prev,
-      [userId]: true
-    }));
+    console.log("Initiating match with user:", otherUser.id);
+    
+    // Create a match directly in the database
+    supabase.from('matches').insert({
+      user_id: currentUser.id,
+      matched_user_id: otherUser.id,
+      status: 'pending'
+    }).then(({ error }) => {
+      if (error) {
+        console.error("Error creating match:", error);
+        toast({
+          title: "שגיאה ביצירת התאמה",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Set the match in app state
+      acceptMatch(`${currentUser.id}-${otherUser.id}`);
+    });
   };
 
   return (
     <div className="dating-card flex flex-col items-center gap-6 max-w-md w-full mx-auto">
-      {!currentMatch && (
+      {!isSearchingMatch && !currentMatch && (
         <>
-          <h2 className="text-2xl font-bold dating-gradient-text">חיפוש התאמות</h2>
+          <h2 className="text-2xl font-bold dating-gradient-text">Ready to Connect?</h2>
+          <p className="text-center text-gray-600">
+            Find someone available right now for a quick voice chat.
+          </p>
+          <div className="mt-4 w-full">
+            <Button 
+              onClick={startSearchingMatch} 
+              className="w-full dating-button flex items-center justify-center gap-2"
+            >
+              <Search size={20} />
+              Start Searching
+            </Button>
+          </div>
+        </>
+      )}
+
+      {isSearchingMatch && !currentMatch && (
+        <div className="flex flex-col items-center gap-4 w-full">
+          <div className="relative w-24 h-24 bg-dating-light rounded-full flex items-center justify-center">
+            <div className="absolute w-full h-full rounded-full bg-dating-primary opacity-20 animate-pulse-slow"></div>
+            <Search className="text-dating-primary" size={40} />
+          </div>
+          <h2 className="text-xl font-semibold">Searching for matches...</h2>
           
-          {loading ? (
-            <div className="flex items-center justify-center p-10">
-              <Loader2 className="animate-spin text-dating-primary" size={40} />
+          {activeUsers.length > 0 ? (
+            <div className="w-full mt-2 space-y-4">
+              <p className="text-gray-600 text-center font-medium">משתמשים זמינים:</p>
+              {activeUsers.map(user => (
+                <div key={user.id} className="p-4 bg-white rounded-lg shadow flex items-center gap-4">
+                  <div className="w-12 h-12 bg-dating-light rounded-full overflow-hidden flex-shrink-0">
+                    <img 
+                      src={user.profilePicture} 
+                      alt={user.name} 
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = "/placeholder.svg";
+                      }}
+                    />
+                  </div>
+                  <div className="flex-grow">
+                    <h3 className="font-medium">{user.name}, {user.age}</h3>
+                    <p className="text-sm text-gray-500">{user.location}</p>
+                  </div>
+                  <Button 
+                    className="dating-button-sm"
+                    onClick={() => initiateMatch(user)}
+                  >
+                    <Mic size={16} />
+                  </Button>
+                </div>
+              ))}
             </div>
           ) : (
-            <div className="w-full space-y-4">
-              {users.length > 0 ? (
-                users.map(user => (
-                  <div key={user.id} className="p-4 bg-white rounded-lg shadow flex items-center gap-4">
-                    <div className="w-16 h-16 bg-dating-light rounded-full overflow-hidden flex-shrink-0">
-                      <img 
-                        src={user.profilePicture} 
-                        alt={user.name} 
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.src = "/placeholder.svg";
-                        }}
-                      />
-                    </div>
-                    <div className="flex-grow">
-                      <h3 className="font-medium">{user.name}, {user.age}</h3>
-                      <p className="text-sm text-gray-500">{user.location}</p>
-                      {user.bio && <p className="text-sm mt-1">{user.bio}</p>}
-                    </div>
-                    <Button 
-                      className={`rounded-full p-2 ${likedUsers[user.id] ? 'bg-pink-100' : 'dating-button-sm'}`}
-                      onClick={() => handleLike(user.id)}
-                      disabled={likedUsers[user.id]}
-                    >
-                      <Heart 
-                        size={24} 
-                        className={likedUsers[user.id] ? 'text-pink-500 fill-pink-500' : ''}
-                      />
-                    </Button>
-                  </div>
-                ))
-              ) : (
-                <p className="text-gray-600 text-center">
-                  אין משתמשים זמינים כרגע
-                </p>
-              )}
-            </div>
+            <p className="text-gray-600 text-center">
+              אנחנו מחפשים מישהו זמין כרגע.
+            </p>
           )}
-        </>
+          
+          <Button 
+            onClick={stopSearchingMatch} 
+            variant="outline"
+            className="mt-2"
+          >
+            בטל חיפוש
+          </Button>
+        </div>
       )}
 
       {currentMatch && currentMatch.status === 'pending' && (
@@ -154,9 +250,9 @@ const MatchFinder: React.FC = () => {
           <div className="w-24 h-24 bg-dating-light rounded-full flex items-center justify-center">
             <Mic className="text-dating-primary" size={40} />
           </div>
-          <h2 className="text-xl font-semibold">התאמה הדדית!</h2>
+          <h2 className="text-xl font-semibold">Match Found!</h2>
           <p className="text-gray-600 text-center">
-            יש לכם התאמה הדדית! האם תרצו להתחיל שיחה קולית?
+            Someone is available for a voice chat right now.
           </p>
           <div className="flex gap-4 mt-2">
             <Button
