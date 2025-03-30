@@ -13,6 +13,7 @@ const UsersGallery: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [likedUsers, setLikedUsers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [processingLike, setProcessingLike] = useState(false);
 
   // Fetch all users
   useEffect(() => {
@@ -63,7 +64,7 @@ const UsersGallery: React.FC = () => {
     fetchUsers();
   }, [currentUser, toast]);
 
-  // Fetch likes given by the current user
+  // Fetch likes given by the current user and check for mutual likes
   useEffect(() => {
     if (!currentUser) return;
 
@@ -136,34 +137,45 @@ const UsersGallery: React.FC = () => {
           if (!existingMatch) {
             console.log('No existing match found, creating new match between', currentUser.id, 'and', otherUserId);
             
-            // Create a match in the database
-            const { data: newMatch, error: matchError } = await supabase
-              .from('matches')
-              .insert({
+            try {
+              // Create a match in the database
+              const newMatch = {
                 user_id: currentUser.id,
                 matched_user_id: otherUserId,
                 status: 'pending'
-              })
-              .select();
-            
-            if (matchError) {
-              console.error('Error creating match:', matchError);
-              console.error('Match creation payload:', {
-                user_id: currentUser.id,
-                matched_user_id: otherUserId,
-                status: 'pending'
+              };
+              
+              console.log('Attempting to create match with payload:', newMatch);
+              
+              const { data: insertResult, error: matchError } = await supabase
+                .from('matches')
+                .insert(newMatch)
+                .select();
+              
+              if (matchError) {
+                console.error('Error creating match:', matchError);
+                console.error('Error details:', matchError.details, matchError.hint, matchError.message);
+                
+                // Check if it's an RLS policy violation
+                if (matchError.code === 'PGRST301') {
+                  console.error('This appears to be an RLS policy issue. The current user does not have permission to insert into the matches table.');
+                }
+                
+                continue;
+              }
+              
+              console.log('Match created successfully:', insertResult);
+              
+              // Notify user about the match
+              toast({
+                title: "התאמה הדדית!",
+                description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
+                variant: "default",
               });
-              continue;
+              
+            } catch (insertError) {
+              console.error('Exception during match creation:', insertError);
             }
-            
-            console.log('Match created successfully:', newMatch);
-            
-            // Notify user about the match
-            toast({
-              title: "התאמה הדדית!",
-              description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
-              variant: "default",
-            });
           } else {
             console.log('Match already exists:', existingMatch);
           }
@@ -177,18 +189,20 @@ const UsersGallery: React.FC = () => {
 
     // Set up real-time subscription for likes
     const likesChannel = supabase
-      .channel('likes-changes')
+      .channel('likes-changes-' + currentUser.id)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'likes',
-        filter: `user_id=eq.${currentUser.id}`,
+        filter: `or(user_id.eq.${currentUser.id},liked_user_id.eq.${currentUser.id})`,
       }, (payload) => {
         console.log('Likes change received:', payload);
         // Refresh likes when there's a change
         fetchLikes();
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Likes subscription status:', status);
+      });
 
     return () => {
       supabase.removeChannel(likesChannel);
@@ -197,9 +211,11 @@ const UsersGallery: React.FC = () => {
 
   // Handle liking a user
   const handleLike = async (userId: string) => {
-    if (!currentUser) return;
+    if (!currentUser || processingLike) return;
     
     try {
+      setProcessingLike(true);
+      
       // Check if already liked
       if (likedUsers.includes(userId)) {
         // Unlike by removing from database
@@ -253,6 +269,7 @@ const UsersGallery: React.FC = () => {
           } else {
             console.error('Error checking mutual like:', mutualError);
           }
+          setProcessingLike(false);
           return; // Exit if no mutual like or error checking
         }
         
@@ -268,6 +285,7 @@ const UsersGallery: React.FC = () => {
         
         if (checkMatchError) {
           console.error('Error checking existing match:', checkMatchError);
+          setProcessingLike(false);
           return;
         }
         
@@ -276,36 +294,61 @@ const UsersGallery: React.FC = () => {
           console.log('No existing match found, creating new match...');
           
           try {
+            // Create a match object
+            const newMatch = {
+              user_id: currentUser.id,
+              matched_user_id: userId,
+              status: 'pending',
+            };
+            
+            console.log('Attempting to create match with payload:', newMatch);
+            
             // Create a match in the database
-            const { data: newMatch, error: matchError } = await supabase
+            const { data: insertResult, error: matchError } = await supabase
               .from('matches')
-              .insert({
-                user_id: currentUser.id,
-                matched_user_id: userId,
-                status: 'pending',
-              })
+              .insert(newMatch)
               .select();
             
             if (matchError) {
               console.error('Error creating match:', matchError);
-              console.error('Match creation payload:', {
-                user_id: currentUser.id,
-                matched_user_id: userId,
-                status: 'pending'
+              console.error('Error details:', matchError.details, matchError.hint, matchError.message);
+              
+              // Check if it's an RLS policy violation
+              if (matchError.code === 'PGRST301') {
+                console.error('This appears to be an RLS policy issue. The current user does not have permission to insert into the matches table.');
+                
+                // Attempt to create match with a direct SQL insert as a workaround if needed
+                /* This is commented out as it's not recommended, but could be a last resort
+                const { data: sqlInsertResult, error: sqlError } = await supabase.rpc('create_match', { 
+                  user_id_param: currentUser.id, 
+                  matched_user_id_param: userId 
+                });
+                
+                if (sqlError) {
+                  console.error('SQL insert attempt also failed:', sqlError);
+                } else {
+                  console.log('Match created via SQL function:', sqlInsertResult);
+                }
+                */
+              }
+              
+              toast({
+                title: "שגיאה ביצירת התאמה",
+                description: "אירעה שגיאה ביצירת ההתאמה, נסה שוב מאוחר יותר",
+                variant: "destructive",
               });
-              throw matchError;
+            } else {
+              console.log('Match created successfully:', insertResult);
+              
+              // Notify user about the match
+              toast({
+                title: "התאמה הדדית!",
+                description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
+                variant: "default",
+              });
             }
-            
-            console.log('Match created successfully:', newMatch);
-            
-            // Notify user about the match
-            toast({
-              title: "התאמה הדדית!",
-              description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
-              variant: "default",
-            });
           } catch (insertError) {
-            console.error('Failed to insert match:', insertError);
+            console.error('Exception during match creation:', insertError);
             toast({
               title: "שגיאה ביצירת התאמה",
               description: "אירעה שגיאה ביצירת ההתאמה, נסה שוב מאוחר יותר",
@@ -323,6 +366,8 @@ const UsersGallery: React.FC = () => {
         description: error.message || "אירעה שגיאה בעת הוספת לייק",
         variant: "destructive",
       });
+    } finally {
+      setProcessingLike(false);
     }
   };
 
