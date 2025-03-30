@@ -22,6 +22,8 @@ const UsersGallery: React.FC = () => {
       try {
         setLoading(true);
         
+        console.log('Current user ID:', currentUser.id);
+        
         // Fetch all users except current user, without gender filtering
         const { data, error } = await supabase
           .from('profiles')

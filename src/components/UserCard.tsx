@@ -14,7 +14,7 @@ interface UserCardProps {
 
 const UserCard: React.FC<UserCardProps> = ({ user, onLike, isLiked = false }) => {
   return (
-    <Card className="w-full max-w-sm overflow-hidden transition-all hover:shadow-md">
+    <Card className="w-full max-w-sm overflow-hidden transition-all hover:shadow-md" dir="rtl">
       <div className="aspect-[3/4] w-full overflow-hidden relative">
         <img 
           src={user.profilePicture || "/placeholder.svg"} 
@@ -49,7 +49,7 @@ const UserCard: React.FC<UserCardProps> = ({ user, onLike, isLiked = false }) =>
         
         {user.preferredGender && user.preferredGender !== 'all' && (
           <div className="mt-2 text-xs text-gray-500 flex items-center">
-            <UserIcon size={14} className="mr-1" />
+            <UserIcon size={14} className="ml-1" />
             מחפש/ת: 
             {user.preferredGender === 'male' ? ' גברים' : 
              user.preferredGender === 'female' ? ' נשים' : 
