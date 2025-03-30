@@ -69,6 +69,8 @@ const UsersGallery: React.FC = () => {
 
     const fetchLikes = async () => {
       try {
+        console.log('Fetching likes for user ID:', currentUser.id);
+        
         const { data, error } = await supabase
           .from('likes')
           .select('*')
@@ -81,8 +83,93 @@ const UsersGallery: React.FC = () => {
         setLikedUsers(likedUserIds);
         
         console.log('Fetched likes for current user:', data);
+        
+        // Check for mutual likes and create matches if needed
+        await checkForMutualLikes(likedUserIds);
       } catch (error) {
         console.error('Error fetching likes:', error);
+      }
+    };
+
+    // Function to check for mutual likes and create matches
+    const checkForMutualLikes = async (myLikes: string[]) => {
+      if (!myLikes.length) return;
+      
+      try {
+        console.log('Checking for mutual likes among:', myLikes);
+        
+        // Find users who have liked the current user
+        const { data: mutualLikes, error: likesError } = await supabase
+          .from('likes')
+          .select('*')
+          .eq('liked_user_id', currentUser.id)
+          .in('user_id', myLikes);
+          
+        if (likesError) {
+          console.error('Error checking mutual likes:', likesError);
+          return;
+        }
+        
+        console.log('Found potential mutual likes:', mutualLikes);
+        
+        if (!mutualLikes || mutualLikes.length === 0) return;
+        
+        // For each mutual like, check if a match already exists
+        for (const like of mutualLikes) {
+          const otherUserId = like.user_id;
+          
+          console.log('Checking if match exists between', currentUser.id, 'and', otherUserId);
+          
+          // Check if a match already exists between these users
+          const { data: existingMatch, error: checkMatchError } = await supabase
+            .from('matches')
+            .select('*')
+            .or(`and(user_id.eq.${currentUser.id},matched_user_id.eq.${otherUserId}),and(user_id.eq.${otherUserId},matched_user_id.eq.${currentUser.id})`)
+            .maybeSingle();
+          
+          if (checkMatchError && checkMatchError.code !== 'PGRST116') {
+            console.error('Error checking existing match:', checkMatchError);
+            continue;
+          }
+          
+          // Only create a match if one doesn't already exist
+          if (!existingMatch) {
+            console.log('No existing match found, creating new match between', currentUser.id, 'and', otherUserId);
+            
+            // Create a match in the database
+            const { data: newMatch, error: matchError } = await supabase
+              .from('matches')
+              .insert({
+                user_id: currentUser.id,
+                matched_user_id: otherUserId,
+                status: 'pending'
+              })
+              .select();
+            
+            if (matchError) {
+              console.error('Error creating match:', matchError);
+              console.error('Match creation payload:', {
+                user_id: currentUser.id,
+                matched_user_id: otherUserId,
+                status: 'pending'
+              });
+              continue;
+            }
+            
+            console.log('Match created successfully:', newMatch);
+            
+            // Notify user about the match
+            toast({
+              title: "התאמה הדדית!",
+              description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
+              variant: "default",
+            });
+          } else {
+            console.log('Match already exists:', existingMatch);
+          }
+        }
+      } catch (error) {
+        console.error('Error in mutual likes processing:', error);
       }
     };
 
@@ -97,7 +184,7 @@ const UsersGallery: React.FC = () => {
         table: 'likes',
         filter: `user_id=eq.${currentUser.id}`,
       }, (payload) => {
-        console.log('Likes change:', payload);
+        console.log('Likes change received:', payload);
         // Refresh likes when there's a change
         fetchLikes();
       })
@@ -106,7 +193,7 @@ const UsersGallery: React.FC = () => {
     return () => {
       supabase.removeChannel(likesChannel);
     };
-  }, [currentUser]);
+  }, [currentUser, toast]);
 
   // Handle liking a user
   const handleLike = async (userId: string) => {
@@ -150,10 +237,9 @@ const UsersGallery: React.FC = () => {
           description: "הוספת לייק בהצלחה",
         });
         
-        // After adding a like, check if there is a mutual like
+        // Check if other user already liked current user (mutual like)
         console.log('Checking for mutual like between', currentUser.id, 'and', userId);
         
-        // Check if other user already liked current user (mutual like)
         const { data: mutualLike, error: mutualError } = await supabase
           .from('likes')
           .select('*')
@@ -189,29 +275,43 @@ const UsersGallery: React.FC = () => {
         if (!existingMatch) {
           console.log('No existing match found, creating new match...');
           
-          // Create a match in the database
-          const { data: newMatch, error: matchError } = await supabase
-            .from('matches')
-            .insert({
-              user_id: currentUser.id,
-              matched_user_id: userId,
-              status: 'pending',
-            })
-            .select();
-          
-          if (matchError) {
-            console.error('Error creating match:', matchError);
-            throw matchError;
+          try {
+            // Create a match in the database
+            const { data: newMatch, error: matchError } = await supabase
+              .from('matches')
+              .insert({
+                user_id: currentUser.id,
+                matched_user_id: userId,
+                status: 'pending',
+              })
+              .select();
+            
+            if (matchError) {
+              console.error('Error creating match:', matchError);
+              console.error('Match creation payload:', {
+                user_id: currentUser.id,
+                matched_user_id: userId,
+                status: 'pending'
+              });
+              throw matchError;
+            }
+            
+            console.log('Match created successfully:', newMatch);
+            
+            // Notify user about the match
+            toast({
+              title: "התאמה הדדית!",
+              description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
+              variant: "default",
+            });
+          } catch (insertError) {
+            console.error('Failed to insert match:', insertError);
+            toast({
+              title: "שגיאה ביצירת התאמה",
+              description: "אירעה שגיאה ביצירת ההתאמה, נסה שוב מאוחר יותר",
+              variant: "destructive",
+            });
           }
-          
-          console.log('Match created successfully:', newMatch);
-          
-          // Notify user about the match
-          toast({
-            title: "התאמה הדדית!",
-            description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
-            variant: "default",
-          });
         } else {
           console.log('Match already exists:', existingMatch);
         }

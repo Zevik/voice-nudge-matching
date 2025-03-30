@@ -100,7 +100,7 @@ const MatchFinder: React.FC = () => {
 
     // Set up real-time subscription for matches
     const matchesChannel = supabase
-      .channel('matches-channel')
+      .channel('matches-updates')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
@@ -113,18 +113,23 @@ const MatchFinder: React.FC = () => {
       })
       .subscribe();
 
+    console.log('Subscribed to matches channel for user:', currentUser.id);
+
     return () => {
+      console.log('Unsubscribing from matches channel');
       supabase.removeChannel(matchesChannel);
     };
   }, [currentUser, toast]);
 
   // Handle accepting a match
   const handleAcceptMatch = (matchId: string) => {
+    console.log('Accepting match:', matchId);
     acceptMatch(matchId);
   };
 
   // Handle rejecting a match
   const handleRejectMatch = (matchId: string) => {
+    console.log('Rejecting match:', matchId);
     rejectMatch(matchId);
   };
 
