@@ -35,8 +35,8 @@ const UsersGallery: React.FC = () => {
         
         console.log('Fetched users:', data);
         
-        if (!data) {
-          console.log('No data returned from the query');
+        if (!data || data.length === 0) {
+          console.log('No users found or empty data array');
           setUsers([]);
           setLoading(false);
           return;
@@ -204,7 +204,16 @@ const UsersGallery: React.FC = () => {
   }
 
   if (!users || users.length === 0) {
-    return <p className="text-center py-8 text-right">לא נמצאו משתמשים</p>;
+    return (
+      <div className="flex flex-col items-center justify-center py-8 space-y-4">
+        <p className="text-lg text-gray-600 text-center">
+          אין משתמשים זמינים כרגע
+        </p>
+        <p className="text-sm text-gray-500 text-center">
+          נסה לחזור מאוחר יותר או פנה לתמיכה
+        </p>
+      </div>
+    );
   }
 
   return (

@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { useApp } from '@/context/AppContext';
@@ -39,46 +38,33 @@ const ProfileSection: React.FC = () => {
     
     const file = e.target.files[0];
     const fileExt = file.name.split('.').pop();
-    const filePath = `${currentUser.id}.${fileExt}`;
+    const filePath = `${currentUser.id}/${Date.now()}.${fileExt}`;
     
     setImageUploading(true);
     
     try {
-      // Check if a storage bucket exists, if not upload will fail
-      const { data: bucketData, error: bucketError } = await supabase
+      const { data: uploadData, error: uploadError } = await supabase
         .storage
-        .listBuckets();
-      
-      console.log('Available buckets:', bucketData);
-      
-      // If no avatar bucket exists, we'll default to the public folder
-      const bucketName = 'avatars';
-      
-      const { data, error } = await supabase
-        .storage
-        .from(bucketName)
+        .from('avatars')
         .upload(filePath, file, {
           upsert: true,
           contentType: file.type
         });
         
-      if (error) {
-        throw error;
+      if (uploadError) {
+        throw uploadError;
       }
       
-      // Get the public URL for the uploaded image
-      const { data: urlData } = supabase
+      const { data: { publicUrl } } = supabase
         .storage
-        .from(bucketName)
+        .from('avatars')
         .getPublicUrl(filePath);
         
-      const imageUrl = urlData.publicUrl;
-      
       // Update profile in database
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
-          profile_picture: imageUrl
+          profile_picture: publicUrl
         })
         .eq('id', currentUser.id);
         
@@ -87,13 +73,13 @@ const ProfileSection: React.FC = () => {
       }
       
       // Update local state
-      setProfileImage(imageUrl);
+      setProfileImage(publicUrl);
       
       // Update user context
       if (currentUser) {
         const updatedUser = {
           ...currentUser,
-          profilePicture: imageUrl
+          profilePicture: publicUrl
         };
         
         // Get the current session
@@ -105,7 +91,7 @@ const ProfileSection: React.FC = () => {
       }
       
       toast({
-        title: "התמונה הועלתה בהצלחה",
+        title: "תמונה הועלתה בהצלחה",
         description: "תמונת הפרופיל שלך עודכנה",
       });
     } catch (error: any) {
