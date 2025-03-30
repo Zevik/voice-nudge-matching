@@ -38,7 +38,7 @@ const Index = () => {
   // If user is not logged in, show auth form
   if (!currentUser) {
     return (
-      <div className="min-h-screen py-10 px-4 bg-dating-background">
+      <div className="min-h-screen py-10 px-4 bg-dating-background" dir="rtl">
         <AuthForm />
       </div>
     );
@@ -47,7 +47,7 @@ const Index = () => {
   // If user is in a call, show call interface
   if (callStage !== 'none') {
     return (
-      <div className="min-h-screen py-6 px-4 bg-dating-background">
+      <div className="min-h-screen py-6 px-4 bg-dating-background" dir="rtl">
         <Header />
         <CallInterface />
       </div>
@@ -56,7 +56,7 @@ const Index = () => {
 
   // Normal logged-in view with tabs
   return (
-    <div className="min-h-screen py-6 px-4 bg-dating-background">
+    <div className="min-h-screen py-6 px-4 bg-dating-background" dir="rtl">
       <Header />
       
       <Tabs defaultValue="users" className="w-full">

@@ -28,25 +28,28 @@ const UsersGallery: React.FC = () => {
           .select('*')
           .neq('id', currentUser.id);
         
-        if (error) throw error;
+        if (error) {
+          console.error('Error fetching users:', error);
+          throw error;
+        }
         
         console.log('Fetched users:', data);
         
-        if (!data || data.length === 0) {
-          console.log('No users found or empty data array');
+        if (!data) {
+          console.log('No data returned from the query');
           setUsers([]);
           setLoading(false);
           return;
         }
         
-        // Convert DB format to our User type
+        // Convert DB format to our User type and provide default values for missing fields
         const mappedUsers = data.map(profile => ({
           id: profile.id,
-          name: profile.name || 'User',
+          name: profile.name || 'משתמש',
           age: profile.age || 25,
           gender: (profile.gender as 'male' | 'female' | 'other') || 'other',
           preferredGender: (profile.preferred_gender as 'male' | 'female' | 'both' | 'all') || 'all',
-          location: profile.location || 'Israel',
+          location: profile.location || 'ישראל',
           bio: profile.bio || undefined,
           profilePicture: profile.profile_picture || '/placeholder.svg',
           relationshipGoal: (profile.relationship_goal as 'serious' | 'casual' | 'friendship') || 'casual',
@@ -197,11 +200,11 @@ const UsersGallery: React.FC = () => {
   };
 
   if (loading) {
-    return <p className="text-center py-8">טוען משתמשים...</p>;
+    return <p className="text-center py-8 text-right">טוען משתמשים...</p>;
   }
 
-  if (users.length === 0) {
-    return <p className="text-center py-8">לא נמצאו משתמשים</p>;
+  if (!users || users.length === 0) {
+    return <p className="text-center py-8 text-right">לא נמצאו משתמשים</p>;
   }
 
   return (
