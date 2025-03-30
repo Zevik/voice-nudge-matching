@@ -22,6 +22,8 @@ const MatchFinder: React.FC = () => {
     const fetchMatches = async () => {
       try {
         setLoading(true);
+        console.log('Fetching matches for user:', currentUser.id);
+        
         // Fetch matches where current user is either user_id or matched_user_id
         const { data, error } = await supabase
           .from('matches')
@@ -29,7 +31,12 @@ const MatchFinder: React.FC = () => {
           .or(`user_id.eq.${currentUser.id},matched_user_id.eq.${currentUser.id}`)
           .eq('status', 'pending');
         
-        if (error) throw error;
+        if (error) {
+          console.error('Error fetching matches:', error);
+          throw error;
+        }
+        
+        console.log('Matches found:', data);
         
         if (!data || data.length === 0) {
           setMatches([]);
@@ -44,6 +51,8 @@ const MatchFinder: React.FC = () => {
             ? match.matched_user_id 
             : match.user_id;
           
+          console.log('Getting profile for other user:', otherUserId);
+          
           // Get the other user's profile
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
@@ -51,7 +60,10 @@ const MatchFinder: React.FC = () => {
             .eq('id', otherUserId)
             .single();
           
-          if (profileError) throw profileError;
+          if (profileError) {
+            console.error('Error fetching profile:', profileError);
+            throw profileError;
+          }
           
           // Convert to our User type
           const user: User = {
@@ -70,6 +82,7 @@ const MatchFinder: React.FC = () => {
           return { match, user };
         }));
         
+        console.log('Matches with profiles:', matchesWithProfiles);
         setMatches(matchesWithProfiles);
       } catch (error) {
         console.error('Error fetching matches:', error);
@@ -103,7 +116,7 @@ const MatchFinder: React.FC = () => {
     return () => {
       supabase.removeChannel(matchesChannel);
     };
-  }, [currentUser]);
+  }, [currentUser, toast]);
 
   // Handle accepting a match
   const handleAcceptMatch = (matchId: string) => {

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { User, DbLike } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
@@ -152,25 +153,46 @@ const UsersGallery: React.FC = () => {
         // Update local state
         setLikedUsers(prev => [...prev, userId]);
         
-        // If mutual like, create a match and notify
+        // If mutual like, create a match in the database
         if (mutualLike) {
-          // Create a match in the database
-          const { error: matchError } = await supabase
+          console.log('Mutual like detected!', mutualLike);
+          
+          // Check if a match already exists between these users
+          const { data: existingMatch, error: checkMatchError } = await supabase
             .from('matches')
-            .insert({
-              user_id: currentUser.id,
-              matched_user_id: userId,
-              status: 'pending',
+            .select('*')
+            .or(`and(user_id.eq.${currentUser.id},matched_user_id.eq.${userId}),and(user_id.eq.${userId},matched_user_id.eq.${currentUser.id})`)
+            .maybeSingle();
+          
+          if (checkMatchError) throw checkMatchError;
+          
+          // Only create a match if one doesn't already exist
+          if (!existingMatch) {
+            // Create a match in the database
+            const { error: matchError } = await supabase
+              .from('matches')
+              .insert({
+                user_id: currentUser.id,
+                matched_user_id: userId,
+                status: 'pending',
+              });
+            
+            if (matchError) {
+              console.error('Error creating match:', matchError);
+              throw matchError;
+            }
+            
+            console.log('Match created successfully between', currentUser.id, 'and', userId);
+            
+            // Notify user about the match
+            toast({
+              title: "התאמה הדדית!",
+              description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
+              variant: "default",
             });
-          
-          if (matchError) throw matchError;
-          
-          // Notify user about the match
-          toast({
-            title: "התאמה הדדית!",
-            description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
-            variant: "default",
-          });
+          } else {
+            console.log('Match already exists:', existingMatch);
+          }
         } else {
           toast({
             title: "הוספת לייק",
