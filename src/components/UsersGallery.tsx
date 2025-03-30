@@ -21,6 +21,7 @@ const UsersGallery: React.FC = () => {
     const fetchUsers = async () => {
       try {
         setLoading(true);
+        
         // Fetch all users except current user, without gender filtering
         const { data, error } = await supabase
           .from('profiles')
@@ -30,6 +31,13 @@ const UsersGallery: React.FC = () => {
         if (error) throw error;
         
         console.log('Fetched users:', data);
+        
+        if (!data || data.length === 0) {
+          console.log('No users found or empty data array');
+          setUsers([]);
+          setLoading(false);
+          return;
+        }
         
         // Convert DB format to our User type
         const mappedUsers = data.map(profile => ({
@@ -45,6 +53,7 @@ const UsersGallery: React.FC = () => {
           premium: profile.premium || false,
         }));
         
+        console.log('Mapped users:', mappedUsers);
         setUsers(mappedUsers);
       } catch (error) {
         console.error('Error fetching users:', error);

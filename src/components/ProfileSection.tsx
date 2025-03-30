@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 const ProfileSection: React.FC = () => {
   const { state, logout, setAuthUser } = useApp();
@@ -16,8 +18,12 @@ const ProfileSection: React.FC = () => {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(currentUser?.name || '');
-  const [age, setAge] = useState(currentUser?.age.toString() || '');
+  const [age, setAge] = useState(currentUser?.age?.toString() || '');
   const [location, setLocation] = useState(currentUser?.location || '');
+  const [gender, setGender] = useState(currentUser?.gender || '');
+  const [preferredGender, setPreferredGender] = useState(currentUser?.preferredGender || '');
+  const [relationshipGoal, setRelationshipGoal] = useState(currentUser?.relationshipGoal || '');
+  const [bio, setBio] = useState(currentUser?.bio || '');
   const [loading, setLoading] = useState(false);
 
   if (!currentUser) {
@@ -34,7 +40,11 @@ const ProfileSection: React.FC = () => {
         .update({
           name,
           age: parseInt(age),
-          location
+          location,
+          gender,
+          preferred_gender: preferredGender,
+          relationship_goal: relationshipGoal,
+          bio
         })
         .eq('id', currentUser.id)
         .select()
@@ -109,6 +119,57 @@ const ProfileSection: React.FC = () => {
               onChange={(e) => setLocation(e.target.value)} 
             />
           </div>
+          <div>
+            <Label htmlFor="gender">מגדר</Label>
+            <Select value={gender} onValueChange={setGender}>
+              <SelectTrigger id="gender">
+                <SelectValue placeholder="בחר/י מגדר" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="male">גבר</SelectItem>
+                <SelectItem value="female">אישה</SelectItem>
+                <SelectItem value="other">אחר</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="preferredGender">מגדר מועדף</Label>
+            <Select value={preferredGender} onValueChange={setPreferredGender}>
+              <SelectTrigger id="preferredGender">
+                <SelectValue placeholder="בחר/י מגדר מועדף" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="male">גברים</SelectItem>
+                <SelectItem value="female">נשים</SelectItem>
+                <SelectItem value="both">גברים ונשים</SelectItem>
+                <SelectItem value="all">הכל</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="relationshipGoal">מטרת הקשר</Label>
+            <Select value={relationshipGoal} onValueChange={setRelationshipGoal}>
+              <SelectTrigger id="relationshipGoal">
+                <SelectValue placeholder="בחר/י מטרת קשר" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="serious">קשר רציני</SelectItem>
+                <SelectItem value="casual">קשר קליל</SelectItem>
+                <SelectItem value="friendship">חברות</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="bio">קצת עליי</Label>
+            <Textarea 
+              id="bio" 
+              value={bio || ''} 
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="ספר/י קצת על עצמך"
+              className="resize-none"
+              rows={3}
+            />
+          </div>
           <Button 
             className="w-full dating-button" 
             onClick={handleSaveProfile}
@@ -121,7 +182,37 @@ const ProfileSection: React.FC = () => {
       ) : (
         <>
           <h2 className="text-xl font-bold">{currentUser.name}, {currentUser.age}</h2>
-          <p className="text-gray-600 mb-4">{currentUser.location}</p>
+          <p className="text-gray-600 mb-1">{currentUser.location}</p>
+          
+          <div className="flex flex-wrap gap-2 mb-4 justify-center">
+            {currentUser.gender && (
+              <Badge variant="outline">
+                {currentUser.gender === 'male' ? 'גבר' : 
+                 currentUser.gender === 'female' ? 'אישה' : 'אחר'}
+              </Badge>
+            )}
+            
+            {currentUser.preferredGender && (
+              <Badge variant="outline">
+                מחפש/ת: {
+                  currentUser.preferredGender === 'male' ? 'גברים' : 
+                  currentUser.preferredGender === 'female' ? 'נשים' : 
+                  currentUser.preferredGender === 'both' ? 'גברים ונשים' : 'הכל'
+                }
+              </Badge>
+            )}
+            
+            {currentUser.relationshipGoal && (
+              <Badge variant="outline">
+                {currentUser.relationshipGoal === 'serious' ? 'קשר רציני' : 
+                 currentUser.relationshipGoal === 'casual' ? 'קשר קליל' : 'חברות'}
+              </Badge>
+            )}
+          </div>
+          
+          {currentUser.bio && (
+            <p className="text-sm text-gray-700 mb-4 text-center">{currentUser.bio}</p>
+          )}
         </>
       )}
       
