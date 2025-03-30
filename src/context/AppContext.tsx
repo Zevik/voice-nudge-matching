@@ -3,6 +3,7 @@ import { User, AppState, Match, Call, Report, DbMatch, DbReport } from '@/types'
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from "@/hooks/use-toast";
 import webRTCService from '@/services/WebRTCService';
+import { Session } from '@supabase/supabase-js';
 
 // Create a context with an undefined initial value
 interface AppContextType {
@@ -44,8 +45,50 @@ export const useApp = () => {
 // Provider component
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AppState>(initialState);
+  const [loadingInitialAuth, setLoadingInitialAuth] = useState(true);
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
+
+  // Check for existing session on initial load
+  useEffect(() => {
+    console.log('Initial auth check running...');
+    setLoadingInitialAuth(true);
+
+    // Check current session immediately
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Initial session check:', session ? 'Session found' : 'No session found');
+      if (session) {
+        // If session exists, set the user
+        setAuthUser(session.user, session);
+      } else {
+        setLoadingInitialAuth(false);
+      }
+    }).catch(error => {
+      console.error("Error getting initial session:", error);
+      setLoadingInitialAuth(false);
+    });
+
+    // Set up auth state change listener
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state change event:', event);
+        
+        if (session) {
+          // User is signed in
+          await setAuthUser(session.user, session);
+        } else {
+          // User is signed out
+          setState(initialState);
+          setLoadingInitialAuth(false);
+        }
+      }
+    );
+
+    // Cleanup function to unsubscribe when the component unmounts
+    return () => {
+      authListener?.subscription.unsubscribe();
+    };
+  }, []);
 
   // Setup realtime subscription for matches when user is logged in
   useEffect(() => {
@@ -204,7 +247,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [state.callStage]);
 
   // Set auth user from Supabase
-  const setAuthUser = async (user: any, session: any, profile?: any) => {
+  const setAuthUser = async (user: any, session: Session, profile?: any) => {
     let userProfile: User;
     console.log("Setting auth user with data:", { user, session });
 
@@ -273,10 +316,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     console.log('Setting current user to:', userProfile);
     
-    setState({
-      ...initialState,
+    setState(prevState => ({
+      ...prevState,
       currentUser: userProfile
-    });
+    }));
+
+    setLoadingInitialAuth(false);
   };
 
   // Logout user
@@ -532,6 +577,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
   };
+
+  if (loadingInitialAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-xl font-semibold">טוען...</div>
+      </div>
+    );
+  }
 
   return (
     <AppContext.Provider
