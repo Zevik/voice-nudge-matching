@@ -36,7 +36,7 @@ const MatchFinder: React.FC = () => {
           throw error;
         }
         
-        console.log('Matches found:', data?.length || 0, data);
+        console.log('Matches found:', data);
         
         if (!data || data.length === 0) {
           setMatches([]);
@@ -100,7 +100,7 @@ const MatchFinder: React.FC = () => {
 
     // Set up real-time subscription for matches
     const matchesChannel = supabase
-      .channel('matches-changes')
+      .channel('public:matches')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
@@ -120,13 +120,11 @@ const MatchFinder: React.FC = () => {
 
   // Handle accepting a match
   const handleAcceptMatch = (matchId: string) => {
-    console.log('Accepting match:', matchId);
     acceptMatch(matchId);
   };
 
   // Handle rejecting a match
   const handleRejectMatch = (matchId: string) => {
-    console.log('Rejecting match:', matchId);
     rejectMatch(matchId);
   };
 
