@@ -6,6 +6,7 @@ import AuthForm from '@/components/AuthForm';
 import MatchFinder from '@/components/MatchFinder';
 import CallInterface from '@/components/CallInterface';
 import ProfileSection from '@/components/ProfileSection';
+import UsersGallery from '@/components/UsersGallery';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const Index = () => {
@@ -58,11 +59,16 @@ const Index = () => {
     <div className="min-h-screen py-6 px-4 bg-dating-background">
       <Header />
       
-      <Tabs defaultValue="match" className="w-full">
-        <TabsList className="grid grid-cols-2 mb-6">
-          <TabsTrigger value="match">התאמה</TabsTrigger>
+      <Tabs defaultValue="users" className="w-full">
+        <TabsList className="grid grid-cols-3 mb-6">
+          <TabsTrigger value="users">משתמשים</TabsTrigger>
+          <TabsTrigger value="match">התאמות</TabsTrigger>
           <TabsTrigger value="profile">פרופיל</TabsTrigger>
         </TabsList>
+        
+        <TabsContent value="users" className="focus-visible:outline-none focus-visible:ring-0">
+          <UsersGallery />
+        </TabsContent>
         
         <TabsContent value="match" className="focus-visible:outline-none focus-visible:ring-0">
           <MatchFinder />

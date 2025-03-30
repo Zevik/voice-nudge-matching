@@ -20,6 +20,13 @@ export interface Match {
   createdAt: Date;
 }
 
+export interface Like {
+  id: string;
+  userId: string;
+  likedUserId: string;
+  createdAt: Date;
+}
+
 export interface Call {
   id: string;
   matchId: string;
@@ -57,6 +64,13 @@ export interface DbMatch {
   status: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface DbLike {
+  id: string;
+  user_id: string;
+  liked_user_id: string;
+  created_at: string;
 }
 
 export interface DbReport {
