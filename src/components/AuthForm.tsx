@@ -225,7 +225,12 @@ const AuthForm: React.FC = () => {
                 dir="ltr"
               />
             </div>
-            <Button type="submit" className="w-full dating-button" disabled={loading}>
+            <Button 
+              type="submit" 
+              className="w-full" 
+              variant="default"
+              disabled={loading}
+            >
               {loading ? 'מתחבר...' : 'התחבר'}
             </Button>
           </form>
@@ -294,7 +299,12 @@ const AuthForm: React.FC = () => {
                 dir="ltr"
               />
             </div>
-            <Button type="submit" className="w-full dating-button" disabled={loading}>
+            <Button 
+              type="submit" 
+              className="w-full" 
+              variant="default"
+              disabled={loading}
+            >
               {loading ? 'נרשם...' : 'הרשם'}
             </Button>
           </form>
