@@ -21,13 +21,15 @@ const UsersGallery: React.FC = () => {
     const fetchUsers = async () => {
       try {
         setLoading(true);
-        // Fetch users with gender preferences matching
+        // Fetch all users except current user, without gender filtering
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
           .neq('id', currentUser.id);
         
         if (error) throw error;
+        
+        console.log('Fetched users:', data);
         
         // Convert DB format to our User type
         const mappedUsers = data.map(profile => ({
@@ -73,7 +75,7 @@ const UsersGallery: React.FC = () => {
         if (error) throw error;
         
         // Extract liked user IDs
-        const likedUserIds = data.map((like: DbLike) => like.liked_user_id);
+        const likedUserIds = data.map((like) => like.liked_user_id);
         setLikedUsers(likedUserIds);
       } catch (error) {
         console.error('Error fetching likes:', error);
