@@ -57,7 +57,7 @@ const UsersGallery: React.FC = () => {
     };
 
     fetchUsers();
-  }, [currentUser]);
+  }, [currentUser, toast]);
 
   // Fetch likes given by the current user
   useEffect(() => {
