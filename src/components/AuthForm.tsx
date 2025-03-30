@@ -7,7 +7,7 @@ import { useApp } from '@/context/AppContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Heart } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { InfoIcon } from "lucide-react";
 
@@ -227,8 +227,7 @@ const AuthForm: React.FC = () => {
             </div>
             <Button 
               type="submit" 
-              className="w-full" 
-              variant="default"
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90" 
               disabled={loading}
             >
               {loading ? 'מתחבר...' : 'התחבר'}
@@ -301,8 +300,7 @@ const AuthForm: React.FC = () => {
             </div>
             <Button 
               type="submit" 
-              className="w-full" 
-              variant="default"
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90" 
               disabled={loading}
             >
               {loading ? 'נרשם...' : 'הרשם'}
