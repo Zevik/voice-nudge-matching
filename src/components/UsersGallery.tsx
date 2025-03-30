@@ -130,16 +130,6 @@ const UsersGallery: React.FC = () => {
           description: "ביטלת בהצלחה את הלייק",
         });
       } else {
-        // Check if other user already liked current user (mutual like)
-        const { data: mutualLike, error: mutualError } = await supabase
-          .from('likes')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('liked_user_id', currentUser.id)
-          .single();
-        
-        if (mutualError && mutualError.code !== 'PGRST116') throw mutualError;
-        
         // Add like to database
         const { error } = await supabase
           .from('likes')
@@ -153,51 +143,75 @@ const UsersGallery: React.FC = () => {
         // Update local state
         setLikedUsers(prev => [...prev, userId]);
         
-        // If mutual like, create a match in the database
-        if (mutualLike) {
-          console.log('Mutual like detected!', mutualLike);
-          
-          // Check if a match already exists between these users
-          const { data: existingMatch, error: checkMatchError } = await supabase
-            .from('matches')
-            .select('*')
-            .or(`and(user_id.eq.${currentUser.id},matched_user_id.eq.${userId}),and(user_id.eq.${userId},matched_user_id.eq.${currentUser.id})`)
-            .maybeSingle();
-          
-          if (checkMatchError) throw checkMatchError;
-          
-          // Only create a match if one doesn't already exist
-          if (!existingMatch) {
-            // Create a match in the database
-            const { error: matchError } = await supabase
-              .from('matches')
-              .insert({
-                user_id: currentUser.id,
-                matched_user_id: userId,
-                status: 'pending',
-              });
-            
-            if (matchError) {
-              console.error('Error creating match:', matchError);
-              throw matchError;
-            }
-            
-            console.log('Match created successfully between', currentUser.id, 'and', userId);
-            
-            // Notify user about the match
-            toast({
-              title: "התאמה הדדית!",
-              description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
-              variant: "default",
-            });
+        toast({
+          title: "הוספת לייק",
+          description: "הוספת לייק בהצלחה",
+        });
+        
+        // After adding a like, check if there is a mutual like
+        console.log('Checking for mutual like between', currentUser.id, 'and', userId);
+        
+        // Check if other user already liked current user (mutual like)
+        const { data: mutualLike, error: mutualError } = await supabase
+          .from('likes')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('liked_user_id', currentUser.id)
+          .single();
+        
+        if (mutualError) {
+          if (mutualError.code !== 'PGRST116') { // Not found error is expected if no mutual like
+            console.error('Error checking mutual like:', mutualError);
           } else {
-            console.log('Match already exists:', existingMatch);
+            console.log('No mutual like found');
           }
-        } else {
+          return; // Exit if no mutual like or error checking
+        }
+        
+        // If we got here, a mutual like exists
+        console.log('Mutual like detected!', mutualLike);
+        
+        // Check if a match already exists between these users
+        const { data: existingMatch, error: checkMatchError } = await supabase
+          .from('matches')
+          .select('*')
+          .or(`and(user_id.eq.${currentUser.id},matched_user_id.eq.${userId}),and(user_id.eq.${userId},matched_user_id.eq.${currentUser.id})`)
+          .maybeSingle();
+        
+        if (checkMatchError) {
+          console.error('Error checking existing match:', checkMatchError);
+          throw checkMatchError;
+        }
+        
+        // Only create a match if one doesn't already exist
+        if (!existingMatch) {
+          console.log('No existing match found, creating new match...');
+          
+          // Create a match in the database
+          const { data: newMatch, error: matchError } = await supabase
+            .from('matches')
+            .insert({
+              user_id: currentUser.id,
+              matched_user_id: userId,
+              status: 'pending',
+            })
+            .select();
+          
+          if (matchError) {
+            console.error('Error creating match:', matchError);
+            throw matchError;
+          }
+          
+          console.log('Match created successfully:', newMatch);
+          
+          // Notify user about the match
           toast({
-            title: "הוספת לייק",
-            description: "הוספת לייק בהצלחה",
+            title: "התאמה הדדית!",
+            description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
+            variant: "default",
           });
+        } else {
+          console.log('Match already exists:', existingMatch);
         }
       }
     } catch (error) {
