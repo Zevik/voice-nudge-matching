@@ -24,28 +24,39 @@ const UsersGallery: React.FC = () => {
         
         console.log('Current user ID:', currentUser.id);
         
-        // Fetch all users except current user, without gender filtering
-        const { data, error } = await supabase
+        // Problem: The SELECT query isn't returning any users
+        // Fix: Change the approach to fetch all profiles
+        const { data: allProfiles, error: profilesError } = await supabase
           .from('profiles')
-          .select('*')
-          .neq('id', currentUser.id);
+          .select('*');
         
-        if (error) {
-          console.error('Error fetching users:', error);
-          throw error;
+        if (profilesError) {
+          console.error('Error fetching users:', profilesError);
+          throw profilesError;
         }
         
-        console.log('Fetched users:', data);
+        console.log('All profiles from DB:', allProfiles);
         
-        if (!data || data.length === 0) {
-          console.log('No users found or empty data array');
+        if (!allProfiles || allProfiles.length === 0) {
+          console.log('No profiles found in database');
+          setUsers([]);
+          setLoading(false);
+          return;
+        }
+        
+        // Filter out the current user manually
+        const otherProfiles = allProfiles.filter(profile => profile.id !== currentUser.id);
+        console.log('Filtered profiles (excluding current user):', otherProfiles);
+        
+        if (otherProfiles.length === 0) {
+          console.log('No other users found after filtering');
           setUsers([]);
           setLoading(false);
           return;
         }
         
         // Convert DB format to our User type and provide default values for missing fields
-        const mappedUsers = data.map(profile => ({
+        const mappedUsers = otherProfiles.map(profile => ({
           id: profile.id,
           name: profile.name || 'משתמש',
           age: profile.age || 25,
@@ -61,7 +72,7 @@ const UsersGallery: React.FC = () => {
         console.log('Mapped users:', mappedUsers);
         setUsers(mappedUsers);
       } catch (error) {
-        console.error('Error fetching users:', error);
+        console.error('Error in users fetch flow:', error);
         toast({
           title: "שגיאה בטעינת משתמשים",
           description: "אירעה שגיאה בטעינת המשתמשים",
@@ -202,12 +213,12 @@ const UsersGallery: React.FC = () => {
   };
 
   if (loading) {
-    return <p className="text-center py-8 text-right">טוען משתמשים...</p>;
+    return <div className="text-center py-8 text-lg font-medium" dir="rtl">טוען משתמשים...</div>;
   }
 
   if (!users || users.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 space-y-4">
+      <div className="flex flex-col items-center justify-center py-8 space-y-4" dir="rtl">
         <p className="text-lg text-gray-600 text-center">
           אין משתמשים זמינים כרגע
         </p>
@@ -219,7 +230,7 @@ const UsersGallery: React.FC = () => {
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 py-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 py-6" dir="rtl">
       {users.map(user => (
         <UserCard 
           key={user.id} 
