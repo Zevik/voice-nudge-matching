@@ -111,16 +111,22 @@ const UsersGallery: React.FC = () => {
     if (!currentUser) return;
     
     try {
+      console.log(`Starting handleLike for user ${userId} by ${currentUser.id}`);
+      
       // Check if already liked
       if (likedUsers.includes(userId)) {
         // Unlike by removing from database
+        console.log(`User ${userId} is already liked. Removing like.`);
         const { error } = await supabase
           .from('likes')
           .delete()
           .eq('user_id', currentUser.id)
           .eq('liked_user_id', userId);
         
-        if (error) throw error;
+        if (error) {
+          console.error('Error removing like:', error);
+          throw error;
+        }
         
         // Update local state
         setLikedUsers(prev => prev.filter(id => id !== userId));
@@ -131,16 +137,21 @@ const UsersGallery: React.FC = () => {
         });
       } else {
         // Check if other user already liked current user (mutual like)
+        console.log(`Checking if user ${userId} has liked ${currentUser.id}`);
         const { data: mutualLike, error: mutualError } = await supabase
           .from('likes')
           .select('*')
           .eq('user_id', userId)
           .eq('liked_user_id', currentUser.id)
-          .single();
+          .maybeSingle();
         
-        if (mutualError && mutualError.code !== 'PGRST116') throw mutualError;
+        if (mutualError && mutualError.code !== 'PGRST116') {
+          console.error('Error checking mutual like:', mutualError);
+          throw mutualError;
+        }
         
         // Add like to database
+        console.log(`Adding like from ${currentUser.id} to ${userId}`);
         const { error } = await supabase
           .from('likes')
           .insert({
@@ -148,7 +159,10 @@ const UsersGallery: React.FC = () => {
             liked_user_id: userId,
           });
         
-        if (error) throw error;
+        if (error) {
+          console.error('Error adding like:', error);
+          throw error;
+        }
         
         // Update local state
         setLikedUsers(prev => [...prev, userId]);
@@ -158,31 +172,40 @@ const UsersGallery: React.FC = () => {
           console.log('Mutual like detected!', mutualLike);
           
           // Check if a match already exists between these users
+          console.log(`Checking for existing match between ${currentUser.id} and ${userId}`);
           const { data: existingMatch, error: checkMatchError } = await supabase
             .from('matches')
             .select('*')
             .or(`and(user_id.eq.${currentUser.id},matched_user_id.eq.${userId}),and(user_id.eq.${userId},matched_user_id.eq.${currentUser.id})`)
             .maybeSingle();
           
-          if (checkMatchError) throw checkMatchError;
+          if (checkMatchError) {
+            console.error('Error checking existing match:', checkMatchError);
+            throw checkMatchError;
+          }
           
           // Only create a match if one doesn't already exist
           if (!existingMatch) {
-            // Create a match in the database
-            const { error: matchError } = await supabase
+            console.log(`Creating new match between ${currentUser.id} and ${userId}`);
+            
+            // Create a match in the database 
+            const { data: newMatch, error: matchError } = await supabase
               .from('matches')
               .insert({
                 user_id: currentUser.id,
                 matched_user_id: userId,
                 status: 'pending',
-              });
+              })
+              .select()
+              .single();
             
             if (matchError) {
               console.error('Error creating match:', matchError);
+              console.error('Error details:', matchError.message, matchError.details, matchError.hint);
               throw matchError;
             }
             
-            console.log('Match created successfully between', currentUser.id, 'and', userId);
+            console.log('Match created successfully:', newMatch);
             
             // Notify user about the match
             toast({
@@ -194,6 +217,7 @@ const UsersGallery: React.FC = () => {
             console.log('Match already exists:', existingMatch);
           }
         } else {
+          console.log(`No mutual like detected. User ${userId} has not liked ${currentUser.id} yet.`);
           toast({
             title: "הוספת לייק",
             description: "הוספת לייק בהצלחה",
