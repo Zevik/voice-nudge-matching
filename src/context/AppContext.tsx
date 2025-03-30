@@ -206,6 +206,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Set auth user from Supabase
   const setAuthUser = async (user: any, session: any, profile?: any) => {
     let userProfile: User;
+    console.log("Setting auth user with data:", { user, session });
 
     if (!profile) {
       // If profile not provided, fetch it from database
@@ -216,10 +217,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .eq('id', user.id)
           .single();
           
-        if (error) throw error;
-        profile = data;
+        if (error) {
+          console.error('Error fetching user profile:', error);
+          
+          // If profile not found, create it
+          if (error.code === 'PGRST116') {
+            console.log('Profile not found, creating new profile for user:', user.id);
+            
+            // Create a new profile based on auth data
+            const newProfile = {
+              id: user.id,
+              name: user.user_metadata?.name || 'New User',
+              age: user.user_metadata?.age || 25,
+              gender: user.user_metadata?.gender || 'other',
+              location: 'Israel',
+              premium: false,
+            };
+            
+            const { data: insertData, error: insertError } = await supabase
+              .from('profiles')
+              .insert(newProfile)
+              .select();
+              
+            if (insertError) {
+              console.error('Error creating profile:', insertError);
+            } else {
+              console.log('Successfully created profile:', insertData);
+              profile = insertData[0] || newProfile;
+            }
+          } else {
+            throw error;
+          }
+        } else {
+          profile = data;
+          console.log('Found existing profile:', profile);
+        }
       } catch (error) {
-        console.error('Error fetching user profile:', error);
+        console.error('Error in profile handling:', error);
       }
     }
     
@@ -227,8 +261,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     userProfile = {
       id: user.id,
       name: profile?.name || user.user_metadata?.name || 'New User',
-      age: profile?.age || 25,
-      gender: (profile?.gender as 'male' | 'female' | 'other') || 'other',
+      age: profile?.age || user.user_metadata?.age || 25,
+      gender: (profile?.gender as 'male' | 'female' | 'other') || (user.user_metadata?.gender as 'male' | 'female' | 'other') || 'other',
       preferredGender: (profile?.preferred_gender as 'male' | 'female' | 'both' | 'all') || 'all',
       location: profile?.location || 'Israel',
       relationshipGoal: (profile?.relationship_goal as 'serious' | 'casual' | 'friendship') || 'casual',
@@ -236,6 +270,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       profilePicture: profile?.profile_picture || '/placeholder.svg',
       bio: profile?.bio || undefined,
     };
+    
+    console.log('Setting current user to:', userProfile);
     
     setState({
       ...initialState,

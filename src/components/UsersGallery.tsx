@@ -24,8 +24,18 @@ const UsersGallery: React.FC = () => {
         
         console.log('Current user ID:', currentUser.id);
         
-        // Problem: The SELECT query isn't returning any users
-        // Fix: Change the approach to fetch all profiles
+        // Debug check: Let's first check if profiles exist at all
+        const { count, error: countError } = await supabase
+          .from('profiles')
+          .select('*', { count: 'exact', head: true });
+        
+        console.log('Total profiles count in database:', count);
+        
+        if (countError) {
+          console.error('Error counting profiles:', countError);
+        }
+        
+        // Fetch all profiles to debug
         const { data: allProfiles, error: profilesError } = await supabase
           .from('profiles')
           .select('*');
@@ -36,6 +46,12 @@ const UsersGallery: React.FC = () => {
         }
         
         console.log('All profiles from DB:', allProfiles);
+        
+        // For debugging, log all profile IDs
+        if (allProfiles && allProfiles.length > 0) {
+          console.log('Profile IDs in database:', allProfiles.map(p => p.id));
+          console.log('Current user ID for comparison:', currentUser.id);
+        }
         
         if (!allProfiles || allProfiles.length === 0) {
           console.log('No profiles found in database');
