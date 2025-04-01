@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { User, DbLike } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
@@ -260,103 +259,119 @@ const UsersGallery: React.FC = () => {
           .from('likes')
           .select('*')
           .eq('user_id', userId)
-          .eq('liked_user_id', currentUser.id)
-          .single();
+          .eq('liked_user_id', currentUser.id);
+        
+        // We want to check if the array has any items, not use single() which throws errors
+        const hasMutualLike = mutualLike && mutualLike.length > 0;
         
         if (mutualError) {
-          if (mutualError.code === 'PGRST116') { // Not found error is expected if no mutual like
-            console.log('No mutual like found');
-          } else {
-            console.error('Error checking mutual like:', mutualError);
-          }
-          setProcessingLike(false);
-          return; // Exit if no mutual like or error checking
-        }
-        
-        // If we got here, a mutual like exists
-        console.log('Mutual like detected!', mutualLike);
-        
-        // Check if a match already exists between these users
-        const { data: existingMatch, error: checkMatchError } = await supabase
-          .from('matches')
-          .select('*')
-          .or(`and(user_id.eq.${currentUser.id},matched_user_id.eq.${userId}),and(user_id.eq.${userId},matched_user_id.eq.${currentUser.id})`)
-          .maybeSingle();
-        
-        if (checkMatchError) {
-          console.error('Error checking existing match:', checkMatchError);
+          console.error('Error checking mutual like:', mutualError);
           setProcessingLike(false);
           return;
         }
         
-        // Only create a match if one doesn't already exist
-        if (!existingMatch) {
-          console.log('No existing match found, creating new match...');
+        // If we have a mutual like
+        if (hasMutualLike) {
+          console.log('Mutual like detected!', mutualLike);
           
-          try {
-            // Create a match object
-            const newMatch = {
-              user_id: currentUser.id,
-              matched_user_id: userId,
-              status: 'pending',
-            };
+          // Check if a match already exists between these users
+          const { data: existingMatch, error: checkMatchError } = await supabase
+            .from('matches')
+            .select('*')
+            .or(`and(user_id.eq.${currentUser.id},matched_user_id.eq.${userId}),and(user_id.eq.${userId},matched_user_id.eq.${currentUser.id})`)
+            .maybeSingle();
+          
+          if (checkMatchError && checkMatchError.code !== 'PGRST116') {
+            console.error('Error checking existing match:', checkMatchError);
+            setProcessingLike(false);
+            return;
+          }
+          
+          // Only create a match if one doesn't already exist
+          if (!existingMatch) {
+            console.log('No existing match found, creating new match...');
             
-            console.log('Attempting to create match with payload:', newMatch);
-            
-            // Create a match in the database
-            const { data: insertResult, error: matchError } = await supabase
-              .from('matches')
-              .insert(newMatch)
-              .select();
-            
-            if (matchError) {
-              console.error('Error creating match:', matchError);
-              console.error('Error details:', matchError.details, matchError.hint, matchError.message);
+            try {
+              // Create a match object
+              const newMatch = {
+                user_id: currentUser.id,
+                matched_user_id: userId,
+                status: 'pending',
+              };
               
-              // Check if it's an RLS policy violation
-              if (matchError.code === 'PGRST301') {
-                console.error('This appears to be an RLS policy issue. The current user does not have permission to insert into the matches table.');
+              console.log('Attempting to create match with payload:', newMatch);
+              
+              // Create a match in the database
+              const { data: insertResult, error: matchError } = await supabase
+                .from('matches')
+                .insert(newMatch)
+                .select();
+              
+              if (matchError) {
+                console.error('Error creating match:', matchError);
+                console.error('Error details:', matchError.details, matchError.hint, matchError.message);
                 
-                // Attempt to create match with a direct SQL insert as a workaround if needed
-                /* This is commented out as it's not recommended, but could be a last resort
-                const { data: sqlInsertResult, error: sqlError } = await supabase.rpc('create_match', { 
-                  user_id_param: currentUser.id, 
-                  matched_user_id_param: userId 
-                });
-                
-                if (sqlError) {
-                  console.error('SQL insert attempt also failed:', sqlError);
+                // Handle specific errors
+                if (matchError.code === 'PGRST301') {
+                  console.error('This appears to be an RLS policy issue.');
+                  
+                  // Try creating match in reverse order as a workaround
+                  const reverseMatch = {
+                    user_id: userId,
+                    matched_user_id: currentUser.id,
+                    status: 'pending',
+                  };
+                  
+                  console.log('Trying reverse match creation:', reverseMatch);
+                  
+                  const { data: reverseResult, error: reverseError } = await supabase
+                    .from('matches')
+                    .insert(reverseMatch)
+                    .select();
+                    
+                  if (reverseError) {
+                    console.error('Reverse match creation also failed:', reverseError);
+                    toast({
+                      title: "שגיאה ביצירת התאמה",
+                      description: "אירעה שגיאה ביצירת ההתאמה, נסה שוב מאוחר יותר",
+                      variant: "destructive",
+                    });
+                  } else {
+                    console.log('Reverse match created successfully:', reverseResult);
+                    toast({
+                      title: "התאמה הדדית!",
+                      description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
+                      variant: "default",
+                    });
+                  }
                 } else {
-                  console.log('Match created via SQL function:', sqlInsertResult);
+                  toast({
+                    title: "שגיאה ביצירת התאמה",
+                    description: "אירעה שגיאה ביצירת ההתאמה, נסה שוב מאוחר יותר",
+                    variant: "destructive",
+                  });
                 }
-                */
+              } else {
+                console.log('Match created successfully:', insertResult);
+                
+                // Notify user about the match
+                toast({
+                  title: "התאמה הדדית!",
+                  description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
+                  variant: "default",
+                });
               }
-              
+            } catch (insertError) {
+              console.error('Exception during match creation:', insertError);
               toast({
                 title: "שגיאה ביצירת התאמה",
                 description: "אירעה שגיאה ביצירת ההתאמה, נסה שוב מאוחר יותר",
                 variant: "destructive",
               });
-            } else {
-              console.log('Match created successfully:', insertResult);
-              
-              // Notify user about the match
-              toast({
-                title: "התאמה הדדית!",
-                description: "מצאתם התאמה הדדית! אתם יכולים להתחיל שיחה",
-                variant: "default",
-              });
             }
-          } catch (insertError) {
-            console.error('Exception during match creation:', insertError);
-            toast({
-              title: "שגיאה ביצירת התאמה",
-              description: "אירעה שגיאה ביצירת ההתאמה, נסה שוב מאוחר יותר",
-              variant: "destructive",
-            });
+          } else {
+            console.log('Match already exists:', existingMatch);
           }
-        } else {
-          console.log('Match already exists:', existingMatch);
         }
       }
     } catch (error: any) {
