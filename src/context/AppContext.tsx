@@ -52,95 +52,96 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!state.currentUser) return;
 
     // Use supabase realtime features for matches
+    // Use a simpler approach for subscriptions without complex filters
     const matchesChannel = supabase
       .channel('user-matches')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'matches',
-        filter: `user_id=eq.${state.currentUser.id}`,
+        table: 'matches'
       }, (payload) => {
         console.log('Match change received:', payload);
         
-        // Handle new match
-        if (payload.eventType === 'INSERT') {
-          const matchData = payload.new as DbMatch;
-          
-          const newMatch: Match = {
-            id: matchData.id,
-            userId: matchData.user_id,
-            matchedUserId: matchData.matched_user_id,
-            status: matchData.status as 'pending' | 'accepted' | 'rejected' | 'completed',
-            createdAt: new Date(matchData.created_at),
-          };
-          
-          setState(prev => ({
-            ...prev,
-            currentMatch: newMatch,
-            isSearchingMatch: false
-          }));
-          
-          toast({
-            title: "התאמה חדשה!",
-            description: "מישהו זמין לשיחה כרגע.",
-          });
-        }
-        
-        // Handle match updates
-        if (payload.eventType === 'UPDATE') {
-          const matchData = payload.new as DbMatch;
-          
-          if (state.currentMatch && state.currentMatch.id === matchData.id) {
+        const matchData = payload.new;
+        // Check if this match involves the current user
+        if (matchData && (matchData.user_id === state.currentUser.id || matchData.matched_user_id === state.currentUser.id)) {
+          // Handle new match
+          if (payload.eventType === 'INSERT') {
+            const newMatch: Match = {
+              id: matchData.id,
+              userId: matchData.user_id,
+              matchedUserId: matchData.matched_user_id,
+              status: matchData.status as 'pending' | 'accepted' | 'rejected' | 'completed',
+              createdAt: new Date(matchData.created_at),
+            };
+            
             setState(prev => ({
               ...prev,
-              currentMatch: {
-                ...prev.currentMatch!,
-                status: matchData.status as 'pending' | 'accepted' | 'rejected' | 'completed'
-              } as Match
+              currentMatch: newMatch,
+              isSearchingMatch: false
             }));
             
-            // If match was accepted, prepare for call
-            if (matchData.status === 'accepted') {
+            toast({
+              title: "התאמה חדשה!",
+              description: "מישהו זמין לשיחה כרגע.",
+            });
+          }
+          
+          // Handle match updates
+          if (payload.eventType === 'UPDATE') {
+            if (state.currentMatch && state.currentMatch.id === matchData.id) {
               setState(prev => ({
                 ...prev,
-                callStage: 'preparing',
-                callTimeRemaining: 5 // 5 seconds preparation time
+                currentMatch: {
+                  ...prev.currentMatch!,
+                  status: matchData.status as 'pending' | 'accepted' | 'rejected' | 'completed'
+                } as Match
               }));
               
-              // Start call after preparation time
-              setTimeout(() => {
-                startCall('voice');
-              }, 5000);
+              // If match was accepted, prepare for call
+              if (matchData.status === 'accepted') {
+                setState(prev => ({
+                  ...prev,
+                  callStage: 'preparing',
+                  callTimeRemaining: 5 // 5 seconds preparation time
+                }));
+                
+                // Start call after preparation time
+                setTimeout(() => {
+                  startCall('voice');
+                }, 5000);
+              }
             }
           }
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Matches subscription status:', status);
+      });
 
     return () => {
       supabase.removeChannel(matchesChannel);
     };
-  }, [state.currentUser]);
+  }, [state.currentUser, toast]);
 
   // Setup realtime subscription for incoming matches
   useEffect(() => {
     if (!state.currentUser) return;
 
-    // Subscribe to matches where this user is the matched_user_id
+    // Subscribe to match updates 
+    // Using a separate channel for better logging
     const incomingMatchesChannel = supabase
       .channel('incoming-matches')
       .on('postgres_changes', {
-        event: '*',
+        event: 'INSERT',
         schema: 'public',
-        table: 'matches',
-        filter: `matched_user_id=eq.${state.currentUser.id}`,
+        table: 'matches'
       }, (payload) => {
         console.log('Incoming match received:', payload);
         
-        // Handle new incoming match
-        if (payload.eventType === 'INSERT') {
-          const matchData = payload.new as DbMatch;
-          
+        const matchData = payload.new;
+        // Only process if this is a match for the current user
+        if (matchData && matchData.matched_user_id === state.currentUser.id) {
           const newMatch: Match = {
             id: matchData.id,
             userId: matchData.user_id,
@@ -161,12 +162,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Incoming matches subscription status:', status);
+      });
 
     return () => {
       supabase.removeChannel(incomingMatchesChannel);
     };
-  }, [state.currentUser]);
+  }, [state.currentUser, toast]);
 
   // Handle call timer
   useEffect(() => {
