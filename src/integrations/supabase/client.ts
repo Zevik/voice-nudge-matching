@@ -16,8 +16,9 @@ supabase.auth.onAuthStateChange((event, session) => {
   console.log(`[Supabase] Auth state changed: ${event}`, session);
 });
 
-supabase.from('*').on('*', (payload) => {
-  console.log(`[Supabase] Realtime event:`, payload);
-});
+// Note: We can't use .on() directly on supabase.from()
+// Instead, we need to create a channel for realtime subscriptions
+// This is just a simple log for now
+console.log('[Supabase] Client initialized');
 
 export { supabase };
