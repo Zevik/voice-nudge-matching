@@ -1,3 +1,4 @@
+
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
@@ -18,5 +19,10 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  define: {
+    // Define the environment variables that will be replaced at build time
+    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(process.env.REACT_APP_SUPABASE_URL || ''),
+    'import.meta.env.VITE_SUPABASE_KEY': JSON.stringify(process.env.REACT_APP_SUPABASE_KEY || ''),
   },
 }));
